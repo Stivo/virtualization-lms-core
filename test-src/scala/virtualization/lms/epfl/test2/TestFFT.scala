@@ -9,7 +9,6 @@ import java.io.PrintWriter
 
 import org.scalatest._
 
-
 trait FFT { this: Arith with Trig =>
   
   def omega(k: Int, N: Int): Complex = {
@@ -103,7 +102,6 @@ trait ScalaGenFlat extends ScalaGenBase {
   def getBlockResultFull[T](x: Block[T]): Exp[T] = x
   def reifyBlock[T:Manifest](x: =>Exp[T]): Block[T] = x
 }
-
 
 
 
