@@ -87,7 +87,7 @@ trait Expressions extends Utils {
   }
 */
 
-  abstract class Def[+T] // operations (composite)
+  trait Def[+T] // operations (composite)
 
   //abstract class Stm // statement (links syms and definitions)
   

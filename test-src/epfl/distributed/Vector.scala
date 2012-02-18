@@ -8,6 +8,11 @@ import util.OverloadHack
 import java.io.PrintWriter
 import java.io.FileOutputStream
 import java.io.PrintWriter
+import scala.collection.mutable.HashMap
+import internal.GraphVizExport
+import java.io.File
+import java.io.FileWriter
+import java.io.StringWriter
 
 
 trait Utils extends Base with OverloadHack {
@@ -75,7 +80,7 @@ trait VectorBase extends Base
   with BooleanOps with PrimitiveOps with MiscOps with TupleOps
   with MathOps with CastingOps with ObjectOps with ArrayOps
 
-trait VectorBaseExp extends VectorBase 
+trait VectorBaseExp extends VectorBase with UtilExp
   with DSLOpsExp
   with EqualExp with IfThenElseExp with VariablesExp with WhileExp with FunctionsExp
   with ImplicitOpsExp with NumericOpsExp with OrderingOpsExp with StringOpsExp
@@ -120,6 +125,7 @@ trait VectorOps extends VectorBase {
 
 }
 
+
 trait VectorOpsExp extends VectorOps with VectorBaseExp {
     case class NewVector[A : Manifest](file : Exp[String]) extends Def[Vector[A]] {
       val mA = manifest[A]
@@ -158,8 +164,39 @@ trait ScalaGenVector extends ScalaGenBase {
   }
 }
 
+trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil with ScalaGenVector {
+  //val IR: dsl.type = dsl
+  val IR: VectorOpsExp
+  import IR._
+  
+  def getInputs(x : Any) : List[Int] = x match {
+    case VectorMap(Sym(x), _) => List(x)
+    case Reflect(VectorSave(Sym(x), _),_,_) => List(x)
+    case _ => Nil
+  }
+  
+  override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter): Unit = {
+//	System.out.println("%s to %s".format(sym, rhs))
+    
+	for (x <- getInputs(rhs)) {
+	  FileOutput.writeln("%s -> %s".format(x, sym.id))
+	}
+	super.emitNode(sym, rhs)
+//	System.out.println("%s from inputs %s".format(sym, getInputs(rhs)))
+  }
+  
+}
 
-
+object FileOutput {
+  val fw = new FileWriter("test.dot")
+  fw.write("digraph g {\n")
+  val sw = new StringWriter()
+  def writeln(s : String) {
+    fw.write(s+"\n")
+    fw.flush
+    sw.write(s+"\n")
+  }
+}
 trait VectorsProg extends VectorImplOps {
   
   def test(x: Rep[Unit]) = {
@@ -168,13 +205,14 @@ trait VectorsProg extends VectorImplOps {
     val v2 = Vector[String]("hi2")
     val v3 = Vector[Boolean]("asdf")
 //    v1.map(_+1)
-    v1.save("test")
+    v2.save("test")
 //    v1.map(x : Int => "")
     v3.map(!_)
-    v2.map(_.startsWith("asdf"))
+    v2.map(_.startsWith("asdf")).map(!_)
   }
   
 }
+
 //trait StringsProg extends Vectors {
 //  
 //  def test(x: Rep[Any]) = {
@@ -186,6 +224,7 @@ trait VectorsProg extends VectorImplOps {
 //
 
 
+
 class TestVectors extends FileDiffSuite {
   
   def testVectors {
@@ -193,9 +232,13 @@ class TestVectors extends FileDiffSuite {
       println("-- begin")
 
       val dsl = new VectorsProg with VectorOpsExp with VectorImplOps 
-      val codegen = new ScalaGenFunctions with ScalaGenUtil with ScalaGenVector with ScalaGenBase { val IR: dsl.type = dsl }
-      codegen.emitSource(dsl.test, "g", new PrintWriter(System.out))
-
+//      val codegen = new ScalaGenFunctions with ScalaGenUtil with ScalaGenVector with ScalaGenBase { val IR: dsl.type = dsl }
+//      codegen.emitSource(dsl.test, "g", new PrintWriter(System.out))
+      val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
+      codegenDeps.emitSource(dsl.test, "g", new PrintWriter(System.out))
+      val graph = new GraphVizExport { val IR: dsl.type = dsl }
+//      val r = { val x = fresh; x+1 }
+//      graph.emitDepGraph(r, "test.dot")
 //      new StringsProg with VectorsExp with VectorsImplExternal
 //      with CompileScala { self =>
 //        val codegen = new ScalaGenFunctions with ScalaGenUtil { val IR: self.type = self }
@@ -206,6 +249,8 @@ class TestVectors extends FileDiffSuite {
 
       println("-- end")
 //    }
+      println(FileOutput.sw.toString)
+      
     //assert(true, "did finish")    
   }
 }
