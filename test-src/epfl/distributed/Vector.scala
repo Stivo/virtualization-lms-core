@@ -109,6 +109,7 @@ trait VectorOps extends VectorBase {
     	def map[B:Manifest](f: Rep[A] => Rep[B]) = vector_map(vector,f)
 //		def filter(f: Rep[A] => Rep[Boolean]) = vector_filter(vector,f)
 		def save(path : Rep[String]) = vector_save(vector, path)
+		def flatten(vector2 : Rep[Vector[A]]) = vector_flatten(vector, vector2)
     }
 
 //    class vecTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,V)]]) {
@@ -121,6 +122,7 @@ trait VectorOps extends VectorBase {
     def vector_map[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[B]) : Rep[Vector[B]]
 //    def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Rep[A] => Rep[Boolean]) : Rep[Vector[A]]
     def vector_save[A : Manifest](vector : Rep[Vector[A]], path : Rep[String]) : Rep[Unit]
+    def vector_flatten[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) : Rep[Vector[A]]
 //    def vector_reduceByKey[K: Manifest, V : Manifest](vector : Rep[Vector[(K,V)]], f : (Rep[V], Rep[V]) => Rep[V] ) : Rep[Vector[(K, V)]]
 
 }
@@ -136,6 +138,10 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp {
       val mA = manifest[A]
       val mB = manifest[B]
     }
+    
+    case class VectorFlatten[A : Manifest](v1 : Exp[Vector[A]], v2 : Exp[Vector[A]]) extends Def[Vector[A]] {
+      val mA = manifest[A]
+    }
 
     case class VectorSave[A : Manifest](vector : Exp[Vector[A]], path : Rep[String]) extends Def[Unit] {
       val mA = manifest[A]
@@ -146,7 +152,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp {
     override def vector_new[A: Manifest](file : Exp[String]) = NewVector[A](file)
     override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A] => Exp[B]) = VectorMap[A, B](vector, f)
     override def vector_save[A : Manifest](vector : Exp[Vector[A]], file : Exp[String]) = reflectEffect(VectorSave[A](vector, file))
-
+    override def vector_flatten[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) = VectorFlatten(vector1, vector2)
 }
 
 trait VectorImplOps extends VectorOps with FunctionsExp with UtilExp {
@@ -160,6 +166,7 @@ trait ScalaGenVector extends ScalaGenBase {
       case nv@NewVector(filename) => emitValDef(sym, "New vector created from %s with type %s".format(filename, nv.mA))
       case vs@VectorSave(vector, filename) => stream.println("Saving vector %s (of type %s) to %s".format(vector, vs.mA, filename))
       case vm@VectorMap(vector, function) => emitValDef(sym, "mapping vector %s with function %s".format(vector, function))
+      case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
     case _ => super.emitNode(sym, rhs)
   }
 }
@@ -170,16 +177,29 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
   import IR._
   
   def getInputs(x : Any) : List[Int] = x match {
+    case VectorFlatten(Sym(x1), Sym(x2)) => List(x1, x2)
     case VectorMap(Sym(x), _) => List(x)
     case Reflect(VectorSave(Sym(x), _),_,_) => List(x)
+    case Reify(Sym(x),_,_) => List(x)
     case _ => Nil
+  }
+  
+  def getName(x : Any) : String = x match {
+    case Reflect(VectorSave(Sym(x), Const(name)),_,_) => "Save to %s".format(name)
+    case VectorMap(vec, x) => "Map"
+    case NewVector(Const(name)) => "Read from %s".format(name)
+    case VectorFlatten(v1, v2) => "Flatten"
+//    case x : Node => x.toString.
+//    case VectorMap(Sym(x), _) => List(x)
+    case Reify(_,_,_) => "Reify"
+    case _ => "Unnamed"
   }
   
   override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter): Unit = {
 //	System.out.println("%s to %s".format(sym, rhs))
-    
+    FileOutput.writeln("""%s [label="%s"];""".format(sym.id, getName(findDefinition(sym).get.rhs)))
 	for (x <- getInputs(rhs)) {
-	  FileOutput.writeln("%s -> %s".format(x, sym.id))
+	  FileOutput.writeln("%s -> %s;".format(x, sym.id))
 	}
 	super.emitNode(sym, rhs)
 //	System.out.println("%s from inputs %s".format(sym, getInputs(rhs)))
@@ -189,13 +209,14 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 
 object FileOutput {
   val fw = new FileWriter("test.dot")
-  fw.write("digraph g {\n")
   val sw = new StringWriter()
+  writeln("digraph {")
   def writeln(s : String) {
     fw.write(s+"\n")
     fw.flush
     sw.write(s+"\n")
   }
+  def finish { writeln("}")}
 }
 trait VectorsProg extends VectorImplOps {
   
@@ -203,12 +224,13 @@ trait VectorsProg extends VectorImplOps {
     //RandomVector(7) + (ZeroVector(7) + RandomVector(7))
     val v1 = Vector[Int]("hello")
     val v2 = Vector[String]("hi2")
-    val v3 = Vector[Boolean]("asdf")
+    val v3 = Vector[String]("asdf")
 //    v1.map(_+1)
-    v2.save("test")
+//    v1.map(_+1).flatten(v1).save("flattened")
+//    v2.save("test")
 //    v1.map(x : Int => "")
-    v3.map(!_)
-    v2.map(_.startsWith("asdf")).map(!_)
+    v3.map(Integer.parseInt(_)).flatten(v1)
+//    v2.map(_.startsWith("asdf")).map(!_)
   }
   
 }
@@ -249,7 +271,8 @@ class TestVectors extends FileDiffSuite {
 
       println("-- end")
 //    }
-      println(FileOutput.sw.toString)
+      FileOutput.finish
+//      println(FileOutput.sw.toString)
       
     //assert(true, "did finish")    
   }
