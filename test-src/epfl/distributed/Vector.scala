@@ -104,27 +104,33 @@ trait VectorOps extends VectorBase {
       def apply[A : Manifest](file : Rep[String]) = vector_new(file)
     }
     implicit def repVecToVecOps[A:Manifest](vector: Rep[Vector[A]]) = new vecOpsCls(vector)
-//    implicit def repVecToVecTupleOps[K: Manifest, V : Manifest](x: Rep[Vector[(K,V)]]) = new vecTupleOpsCls(x)
+    implicit def repVecToVecIterableTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,Iterable[V])]]) = new vecIterableTupleOpsCls(x)
+    implicit def repVecToVecTupleOps[K: Manifest, V : Manifest](x: Rep[Vector[(K,V)]]) = new vecTupleOpsCls(x)
     class vecOpsCls[A:Manifest](vector: Rep[Vector[A]]) {
+        def flatMap[B : Manifest](f : Rep[A] => Rep[Iterable[B]]) = vector_flatMap(vector, f)
     	def map[B:Manifest](f: Rep[A] => Rep[B]) = vector_map(vector,f)
 //		def filter(f: Rep[A] => Rep[Boolean]) = vector_filter(vector,f)
 		def save(path : Rep[String]) = vector_save(vector, path)
-		def flatten(vector2 : Rep[Vector[A]]) = vector_flatten(vector, vector2)
+		def ++(vector2 : Rep[Vector[A]]) = vector_++(vector, vector2)
     }
 
-//    class vecTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,V)]]) {
-//      def reduceByKey(f : (Rep[V], Rep[V]) => Rep[V] ) = vector_reduceByKey[K, V](x, f)
-//    }
+    class vecIterableTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,Iterable[V])]]) {
+      def reduce(f : (Rep[V], Rep[V]) => Rep[V] ) = vector_reduce[K, V](x, f)
+    }
     
+   class vecTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,V)]]) {
+      def groupByKey = vector_groupByKey[K, V](x)
+    }
 
     //operations
     def vector_new[A:Manifest](file : Rep[String]): Rep[Vector[A]]
     def vector_map[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[B]) : Rep[Vector[B]]
+    def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) : Rep[Vector[B]]
 //    def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Rep[A] => Rep[Boolean]) : Rep[Vector[A]]
     def vector_save[A : Manifest](vector : Rep[Vector[A]], path : Rep[String]) : Rep[Unit]
-    def vector_flatten[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) : Rep[Vector[A]]
-//    def vector_reduceByKey[K: Manifest, V : Manifest](vector : Rep[Vector[(K,V)]], f : (Rep[V], Rep[V]) => Rep[V] ) : Rep[Vector[(K, V)]]
-
+    def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) : Rep[Vector[A]]
+    def vector_reduce[K: Manifest, V : Manifest](vector : Rep[Vector[(K,Iterable[V])]], f : (Rep[V], Rep[V]) => Rep[V] ) : Rep[Vector[(K, V)]]
+    def vector_groupByKey[K: Manifest, V : Manifest](vector : Rep[Vector[(K,V)]]) : Rep[Vector[(K, Iterable[V])]]
 }
 
 
@@ -139,20 +145,37 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp {
       val mB = manifest[B]
     }
     
+    case class VectorFlatMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[Iterable[B]]) //, convert : Exp[Int] => Exp[A])
+       extends Def[Vector[B]] {
+      val mA = manifest[A]
+      val mB = manifest[B]
+    }
+   
     case class VectorFlatten[A : Manifest](v1 : Exp[Vector[A]], v2 : Exp[Vector[A]]) extends Def[Vector[A]] {
       val mA = manifest[A]
     }
 
-    case class VectorSave[A : Manifest](vector : Exp[Vector[A]], path : Rep[String]) extends Def[Unit] {
-      val mA = manifest[A]
+    case class VectorGroupByKey[K : Manifest, V : Manifest](v1 : Exp[Vector[(K,V)]]) extends Def[Vector[(K, Iterable[V])]] {
+      val mKey = manifest[K]
+      val mValue = manifest[V]
     }
     
-//    case class VectorReduceByKey[K: Manifest, V : Manifest](vector : Exp[Vector[(K,V)]], f : (Exp[V], Exp[V]) => Exp[V]) extends Def[Vector[(K, V)]]
+    case class VectorReduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V]) extends Def[Vector[(K, V)]] {
+      val mKey = manifest[K]
+      val mValue = manifest[V]      
+    }
+    
+    case class VectorSave[A : Manifest](vector : Exp[Vector[A]], path : Rep[String]) extends Def[Unit] {
+    	val mA = manifest[A]
+    }
     
     override def vector_new[A: Manifest](file : Exp[String]) = NewVector[A](file)
     override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A] => Exp[B]) = VectorMap[A, B](vector, f)
+    override def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) = VectorFlatMap(vector, f)
     override def vector_save[A : Manifest](vector : Exp[Vector[A]], file : Exp[String]) = reflectEffect(VectorSave[A](vector, file))
-    override def vector_flatten[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) = VectorFlatten(vector1, vector2)
+    override def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) = VectorFlatten(vector1, vector2)
+    override def vector_reduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V] ) = VectorReduce(vector, f)
+    override def vector_groupByKey[K: Manifest, V : Manifest](vector : Exp[Vector[(K,V)]]) = VectorGroupByKey(vector)
 }
 
 trait VectorImplOps extends VectorOps with FunctionsExp with UtilExp {
@@ -166,7 +189,10 @@ trait ScalaGenVector extends ScalaGenBase {
       case nv@NewVector(filename) => emitValDef(sym, "New vector created from %s with type %s".format(filename, nv.mA))
       case vs@VectorSave(vector, filename) => stream.println("Saving vector %s (of type %s) to %s".format(vector, vs.mA, filename))
       case vm@VectorMap(vector, function) => emitValDef(sym, "mapping vector %s with function %s".format(vector, function))
+      case vm@VectorFlatMap(vector, function) => emitValDef(sym, "flat mapping vector %s with function %s".format(vector, function))
       case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
+      case gbk@VectorGroupByKey(vector) => emitValDef(sym, "grouping vector by key")
+      case red@VectorReduce(vector, f) => emitValDef(sym, "reducing vector")
     case _ => super.emitNode(sym, rhs)
   }
 }
@@ -179,25 +205,42 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
   def getInputs(x : Any) : List[Int] = x match {
     case VectorFlatten(Sym(x1), Sym(x2)) => List(x1, x2)
     case VectorMap(Sym(x), _) => List(x)
+    case VectorFlatMap(Sym(x), _) => List(x)
     case Reflect(VectorSave(Sym(x), _),_,_) => List(x)
     case Reify(Sym(x),_,_) => List(x)
+    case VectorGroupByKey(Sym(x)) => List(x)
+    case VectorReduce(Sym(x), f) => List(x)
     case _ => Nil
   }
   
   def getName(x : Any) : String = x match {
     case Reflect(VectorSave(Sym(x), Const(name)),_,_) => "Save to %s".format(name)
-    case VectorMap(vec, x) => "Map"
+    case VectorMap(vec, x) => "FlatMap (Map)"
+    case VectorFlatMap(vec, x) => "FlatMap"
     case NewVector(Const(name)) => "Read from %s".format(name)
     case VectorFlatten(v1, v2) => "Flatten"
+    case VectorGroupByKey(Sym(x)) => "Group By Key"
+    case VectorReduce(Sym(x), f) => "Reduce"
 //    case x : Node => x.toString.
 //    case VectorMap(Sym(x), _) => List(x)
     case Reify(_,_,_) => "Reify"
     case _ => "Unnamed"
   }
   
+  def getOtherAttributes(x : Any) : List[(String, String)] = x match {
+    case VectorGroupByKey(_) => List(("shape", "box"), ("color","red"))
+    case VectorFlatten(_, _) => List(("shape", "triangle"))
+    case NewVector(_) => List(("color","green"))
+    case Reflect(VectorSave(_,_),_,_) => List(("color","blue"))
+    case _ => Nil
+  }
+
+  
   override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter): Unit = {
 //	System.out.println("%s to %s".format(sym, rhs))
-    FileOutput.writeln("""%s [label="%s"];""".format(sym.id, getName(findDefinition(sym).get.rhs)))
+    val op = findDefinition(sym).get.rhs
+    val otherAttributes = getOtherAttributes(op).map( x=> "%s=%s".format(x._1, x._2)).mkString(",")
+    FileOutput.writeln("""%s [label="%s",%s];""".format(sym.id, getName(op), otherAttributes))
 	for (x <- getInputs(rhs)) {
 	  FileOutput.writeln("%s -> %s;".format(x, sym.id))
 	}
@@ -217,63 +260,4 @@ object FileOutput {
     sw.write(s+"\n")
   }
   def finish { writeln("}")}
-}
-trait VectorsProg extends VectorImplOps {
-  
-  def test(x: Rep[Unit]) = {
-    //RandomVector(7) + (ZeroVector(7) + RandomVector(7))
-    val v1 = Vector[Int]("hello")
-    val v2 = Vector[String]("hi2")
-    val v3 = Vector[String]("asdf")
-//    v1.map(_+1)
-//    v1.map(_+1).flatten(v1).save("flattened")
-//    v2.save("test")
-//    v1.map(x : Int => "")
-    v3.map(Integer.parseInt(_)).flatten(v1)
-//    v2.map(_.startsWith("asdf")).map(!_)
-  }
-  
-}
-
-//trait StringsProg extends Vectors {
-//  
-//  def test(x: Rep[Any]) = {
-//    val s: Rep[Any] = "hi " + "yo " + x + " done"
-//    s
-//  }
-//  
-//}
-//
-
-
-
-class TestVectors extends FileDiffSuite {
-  
-  def testVectors {
-//    withOutput(System.err/*"test-out/epfl/test-dist"*/) {    
-      println("-- begin")
-
-      val dsl = new VectorsProg with VectorOpsExp with VectorImplOps 
-//      val codegen = new ScalaGenFunctions with ScalaGenUtil with ScalaGenVector with ScalaGenBase { val IR: dsl.type = dsl }
-//      codegen.emitSource(dsl.test, "g", new PrintWriter(System.out))
-      val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
-      codegenDeps.emitSource(dsl.test, "g", new PrintWriter(System.out))
-      val graph = new GraphVizExport { val IR: dsl.type = dsl }
-//      val r = { val x = fresh; x+1 }
-//      graph.emitDepGraph(r, "test.dot")
-//      new StringsProg with VectorsExp with VectorsImplExternal
-//      with CompileScala { self =>
-//        val codegen = new ScalaGenFunctions with ScalaGenUtil { val IR: self.type = self }
-//        codegen.emitSource(test, "Test", new PrintWriter(System.out))
-//        val g = compile(test)
-//        println(g(0))
-//      }
-
-      println("-- end")
-//    }
-      FileOutput.finish
-//      println(FileOutput.sw.toString)
-      
-    //assert(true, "did finish")    
-  }
 }

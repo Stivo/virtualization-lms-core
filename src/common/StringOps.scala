@@ -44,8 +44,8 @@ trait StringOps extends Variables with OverloadHack {
   
   def infix_startsWith(s1: Rep[String], s2: Rep[String])(implicit ctx: SourceContext) = string_startswith(s1,s2)
   def infix_trim(s: Rep[String])(implicit ctx: SourceContext) = string_trim(s)
-  def infix_split(s: Rep[String], separators: Rep[String])(implicit ctx: SourceContext) = string_split(s, separators, unit(0))
-  def infix_split(s: Rep[String], separators: Rep[String], limit : Rep[Int])(implicit o : Overloaded1, ctx: SourceContext) = string_split(s, separators, limit)
+  def infix_split(s: Rep[String], separators: Rep[String])(implicit o : Overloaded1, ctx: SourceContext) = string_split(s, separators, unit(0))
+  def infix_split(s: Rep[String], separators: Rep[String], limit : Rep[Int])(implicit o : Overloaded2, ctx: SourceContext) = string_split(s, separators, limit)
   def infix_toDouble(s: Rep[String])(implicit ctx: SourceContext) = string_todouble(s)
   def infix_replaceAll(s : Rep[String], regex : Rep[String], rep : Rep[String])(implicit ctx: SourceContext) = string_replaceall(s, regex, rep)
   def infix_contains(s : Rep[String], substring : Rep[String])(implicit ctx: SourceContext) = string_contains(s, substring)
