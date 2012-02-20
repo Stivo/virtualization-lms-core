@@ -201,11 +201,11 @@ trait ScalaGenVector extends ScalaGenBase {
 object FileOutput {
   val fw = new FileWriter("test.dot")
   val sw = new StringWriter()
-  writeln("digraph {")
+//  writeln("digraph {")
   def writeln(s : String) {
-    fw.write(s+"\n")
+    fw.write(s)
     fw.flush
-    sw.write(s+"\n")
+    sw.write(s)
   }
-  def finish { writeln("}")}
+//  def finish { writeln("}")}
 }
