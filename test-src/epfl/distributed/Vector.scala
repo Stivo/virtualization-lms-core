@@ -197,58 +197,6 @@ trait ScalaGenVector extends ScalaGenBase {
   }
 }
 
-trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil with ScalaGenVector {
-  //val IR: dsl.type = dsl
-  val IR: VectorOpsExp
-  import IR._
-  
-  def getInputs(x : Any) : List[Int] = x match {
-    case VectorFlatten(Sym(x1), Sym(x2)) => List(x1, x2)
-    case VectorMap(Sym(x), _) => List(x)
-    case VectorFlatMap(Sym(x), _) => List(x)
-    case Reflect(VectorSave(Sym(x), _),_,_) => List(x)
-    case Reify(Sym(x),_,_) => List(x)
-    case VectorGroupByKey(Sym(x)) => List(x)
-    case VectorReduce(Sym(x), f) => List(x)
-    case _ => Nil
-  }
-  
-  def getName(x : Any) : String = x match {
-    case Reflect(VectorSave(Sym(x), Const(name)),_,_) => "Save to %s".format(name)
-    case VectorMap(vec, x) => "FlatMap (Map)"
-    case VectorFlatMap(vec, x) => "FlatMap"
-    case NewVector(Const(name)) => "Read from %s".format(name)
-    case VectorFlatten(v1, v2) => "Flatten"
-    case VectorGroupByKey(Sym(x)) => "Group By Key"
-    case VectorReduce(Sym(x), f) => "Reduce"
-//    case x : Node => x.toString.
-//    case VectorMap(Sym(x), _) => List(x)
-    case Reify(_,_,_) => "Reify"
-    case _ => "Unnamed"
-  }
-  
-  def getOtherAttributes(x : Any) : List[(String, String)] = x match {
-    case VectorGroupByKey(_) => List(("shape", "box"), ("color","red"))
-    case VectorFlatten(_, _) => List(("shape", "triangle"))
-    case NewVector(_) => List(("color","green"))
-    case Reflect(VectorSave(_,_),_,_) => List(("color","blue"))
-    case _ => Nil
-  }
-
-  
-  override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter): Unit = {
-//	System.out.println("%s to %s".format(sym, rhs))
-    val op = findDefinition(sym).get.rhs
-    val otherAttributes = getOtherAttributes(op).map( x=> "%s=%s".format(x._1, x._2)).mkString(",")
-    FileOutput.writeln("""%s [label="%s",%s];""".format(sym.id, getName(op), otherAttributes))
-	for (x <- getInputs(rhs)) {
-	  FileOutput.writeln("%s -> %s;".format(x, sym.id))
-	}
-	super.emitNode(sym, rhs)
-//	System.out.println("%s from inputs %s".format(sym, getInputs(rhs)))
-  }
-  
-}
 
 object FileOutput {
   val fw = new FileWriter("test.dot")
