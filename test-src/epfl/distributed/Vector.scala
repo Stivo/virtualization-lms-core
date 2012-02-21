@@ -109,7 +109,7 @@ trait VectorOps extends VectorBase {
     class vecOpsCls[A:Manifest](vector: Rep[Vector[A]]) {
         def flatMap[B : Manifest](f : Rep[A] => Rep[Iterable[B]]) = vector_flatMap(vector, f)
     	def map[B:Manifest](f: Rep[A] => Rep[B]) = vector_map(vector,f)
-//		def filter(f: Rep[A] => Rep[Boolean]) = vector_filter(vector,f)
+		def filter(f: Rep[A] => Rep[Boolean]) = vector_filter(vector,f)
 		def save(path : Rep[String]) = vector_save(vector, path)
 		def ++(vector2 : Rep[Vector[A]]) = vector_++(vector, vector2)
     }
@@ -126,7 +126,7 @@ trait VectorOps extends VectorBase {
     def vector_new[A:Manifest](file : Rep[String]): Rep[Vector[A]]
     def vector_map[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[B]) : Rep[Vector[B]]
     def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) : Rep[Vector[B]]
-//    def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Rep[A] => Rep[Boolean]) : Rep[Vector[A]]
+    def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Rep[A] => Rep[Boolean]) : Rep[Vector[A]]
     def vector_save[A : Manifest](vector : Rep[Vector[A]], path : Rep[String]) : Rep[Unit]
     def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) : Rep[Vector[A]]
     def vector_reduce[K: Manifest, V : Manifest](vector : Rep[Vector[(K,Iterable[V])]], f : (Rep[V], Rep[V]) => Rep[V] ) : Rep[Vector[(K, V)]]
@@ -143,6 +143,11 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp {
        extends Def[Vector[B]] {
       val mA = manifest[A]
       val mB = manifest[B]
+    }
+
+    case class VectorFilter[A : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[Boolean])
+       extends Def[Vector[A]] {
+      val mA = manifest[A]
     }
     
     case class VectorFlatMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[Iterable[B]]) //, convert : Exp[Int] => Exp[A])
@@ -172,6 +177,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp {
     override def vector_new[A: Manifest](file : Exp[String]) = NewVector[A](file)
     override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A] => Exp[B]) = VectorMap[A, B](vector, f)
     override def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) = VectorFlatMap(vector, f)
+    override def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Exp[A] => Exp[Boolean]) = VectorFilter(vector, f)
     override def vector_save[A : Manifest](vector : Exp[Vector[A]], file : Exp[String]) = reflectEffect(VectorSave[A](vector, file))
     override def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) = VectorFlatten(vector1, vector2)
     override def vector_reduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V] ) = VectorReduce(vector, f)
@@ -189,6 +195,7 @@ trait ScalaGenVector extends ScalaGenBase {
       case nv@NewVector(filename) => emitValDef(sym, "New vector created from %s with type %s".format(filename, nv.mA))
       case vs@VectorSave(vector, filename) => stream.println("Saving vector %s (of type %s) to %s".format(vector, vs.mA, filename))
       case vm@VectorMap(vector, function) => emitValDef(sym, "mapping vector %s with function %s".format(vector, function))
+      case vf@VectorFilter(vector, function) => emitValDef(sym, "filtering vector %s with function %s".format(vector, function))
       case vm@VectorFlatMap(vector, function) => emitValDef(sym, "flat mapping vector %s with function %s".format(vector, function))
       case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
       case gbk@VectorGroupByKey(vector) => emitValDef(sym, "grouping vector by key")

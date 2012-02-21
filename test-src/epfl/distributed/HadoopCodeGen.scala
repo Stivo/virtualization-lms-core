@@ -32,25 +32,27 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 	}
 	
 	class GroupByKeyPart(val groupByKey : Node) extends MscrPart {
-	  groupByKey.mscrPart += this
-		override def toString() = "GBK(%s)".format(groupByKey.id)
-	} 
+	    groupByKey.mscrPart += this
+        override def toString() = "GBK(%s)".format(groupByKey.id)
+	}
 	
 	class Mscr(val mappers : Buffer[Mapper], val reducers : Buffer[Reducer], val groups : Buffer[GroupByKeyPart]) {
 		def all = mappers ++ reducers ++ groups
-				all.foreach(_.mscr = this)
-				override def toString() = "MSCR: %sM, %sGBK, %sR".format(mappers.size, groups.size, reducers.size)
+		all.foreach(_.mscr = this)
+		override def toString() = "MSCR: %sM, %sGBK, %sR".format(mappers.size, groups.size, reducers.size)
 	}
 	
 	type EdgeType[A] = DiEdge[A]
-		type NodeType = Node
+	type NodeType = Node
 
-		trait Node {
-			val id : Int
-			var mscrPart = Buffer[MscrPart]()
-			def name = toString//.takeWhile(_!='(')
-			def isRead = false
-		}
+	trait Node {
+		val id : Int
+		var mscrPart = Buffer[MscrPart]()
+		def name = toString//.takeWhile(_!='(')
+		def isRead = false
+		
+		def isInGbkOrReducer = mscrPart.find(!_.isInstanceOf[Mapper]).isDefined
+	}
 	case class GroupByKey(override val id : Int) extends Node
 	case class FlatMap(override val id : Int) extends Node
 	case class Read(override val id : Int) extends Node {
@@ -67,6 +69,7 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 		case NewVector(_) => Read(id)
 		case VectorFlatten(_, _) => Flatten(id)
 		case VectorMap(Sym(x), _) => FlatMap(id)
+		case VectorFilter(Sym(x), _) => FlatMap(id)
 		case VectorFlatMap(Sym(x), _) => FlatMap(id)
 		case Reflect(VectorSave(Sym(x), _),_,_) => Save(id)
 		case VectorGroupByKey(Sym(x)) => GroupByKey(id)
@@ -79,6 +82,7 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 		case VectorFlatten(Sym(x1), Sym(x2)) => List(x1, x2)
 		case VectorMap(Sym(x), _) => List(x)
 		case VectorFlatMap(Sym(x), _) => List(x)
+		case VectorFilter(Sym(x), _) => List(x)
 		case Reflect(VectorSave(Sym(x), _),_,_) => List(x)
 		case Reify(Sym(x),_,_) => List(x)
 		case VectorGroupByKey(Sym(x)) => List(x)
@@ -144,13 +148,11 @@ class GraphState {
 			(starts.contains(thisNode.value) || gbks.contains(thisNode.value)))
 				}
 
-			def visitedFilter(node : graph.NodeT) = 
-					starts.contains(node.value) || gbks.contains(node.value)
-
 			def makeEdgeFilter(node : graph.NodeT) = {
 				thisNode : graph.EdgeT => thisNode.from.value match {
 				case x : Any if x == node.value => true
 				case GroupByKey(_) => false
+				case x if x.isInGbkOrReducer => false 
 				case _ => true
 				}
 			}
@@ -161,7 +163,9 @@ class GraphState {
 					x =>
 //					println("backward "+x.value)
 					x.value match {
-					case GroupByKey(_) if (x.value != node.value)=> {println("Hi there"); Cancel}
+					  // not if there is a non mapper mscrpart in the mscrPart (this is already assigned)
+					  case node : Node if node.mscrPart.find(!_.isInstanceOf[Mapper]).isDefined
+					  	=> starts += node; goForward(x); Continue
 					case Read(_) => starts += x.value; goForward(x); Continue
 					case _ => Continue
 					}
@@ -173,7 +177,7 @@ class GraphState {
 					x=>
 //					println("forward "+x.value)
 					x.value match {
-					case gbk@GroupByKey(_) if gbks.contains(gbk)=> Cancel
+					  case _ if gbks.contains(x.value) => Continue
 					case gbk@GroupByKey(_) => gbks += x.value; goBackward(x); Continue
 					case _ => Continue
 					}
@@ -200,26 +204,58 @@ class GraphState {
 			while (!toDo.isEmpty)
 			{
 				val head = toDo.head
-				// make a mapper
+				// make an mscr
+				// find all related starts for this mscr
 				val starts = findAllRelated(head)
 				toDo --= starts
+				// make the mappers
 				val mappersAndGBKs = starts.map(x => makeMapper(graph.get(x)))
-				val gbks = mappersAndGBKs.map(_._1).reduce(_++_)
 				val mappers = mappersAndGBKs.map(_._2)
+				// make the found group by keys to group msrc parts
+				val gbks = mappersAndGBKs.map(_._1).reduce(_++_)
 				val groups = gbks.map{ x => new GroupByKeyPart(x)}
-	
+				
+				// make the reducers, one per group by key
+				// the filter, that stops traversing when a new MSCR should be started
+				def reducerEdgeFilter(edge : graph.EdgeT) : Boolean = {
+				  def cutOnThisEdge : Boolean = {
+					  edge.to.value match {
+					    case GroupByKey(_) => return true
+					    case _ =>
+					  }
+					  val successorsWithGBKs = edge.to.diSuccessors.filter({
+					    x =>
+					      x.value match {
+					        case GroupByKey(_) => true
+					        case _ => x.findSuccessor(_.value match {case GroupByKey(_) => true; case _ => false}).isDefined
+					      }
+					  })
+					  // TODO: only count branches which lead to group by keys, as others can be directly implemented
+					  if (successorsWithGBKs.size > 1){
+					    return true
+					  }
+					  return false
+				  }
+				  if (cutOnThisEdge) {
+				    toDo += edge.to.value;
+				    false
+				  } else {
+				    true
+				  }
+				}
+				// make the reducers
 				val reducers = gbks.map{
 					x =>
 	
 					var reducer = graph.get(x).diSuccessors.head.value
 					var nodes = Set[Node]()
-					graph.get(x).traverseNodes(edgeFilter = _.to.value match {case GroupByKey(_) => false; case _ => true}) {
+					graph.get(x).traverseNodes(edgeFilter = reducerEdgeFilter) {
 						x=>
 						nodes += x;
 						Continue
 					}
 					nodes -= x
-							val red = new Reducer(reducer)
+					val red = new Reducer(reducer)
 					nodes.foreach(_.mscrPart += red)
 					red
 				}
@@ -228,7 +264,6 @@ class GraphState {
 			}
 			out
 		}
-
 
 		def exportMSCRGraph(graph : Graph[NodeType, EdgeType]) = {
 			val mscrs = createMSCRs(graph)
@@ -265,13 +300,13 @@ class GraphState {
 			sw.toString()
 		}
 	
-	
 		override def toString() = "GraphState "
 	}
 	object GraphState extends ThreadLocal[GraphState]{
 		override def get = {
 		  var out = super.get
-		  if (out.equals(null)) {
+		  // ugly null test, some bug
+		  if (!out.isInstanceOf[GraphState]) {
 		    out = new GraphState()
 		    super.set(out)
 		  }
@@ -282,34 +317,29 @@ class GraphState {
 	def graphState = GraphState.get()
 	
 	override def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {
-		GraphState.set(new GraphState)
+		GraphState.set(null)
 		val out = super.emitSource(f, className, stream)
-		//    graphState.finish
-		System.out.println(graphState.map)
 		FileOutput.writeln(graphState.export)
 		out
 	}
 	
 	override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter): Unit = {
-		//	System.out.println("%s to %s".format(sym, rhs))
 	
 		val op = findDefinition(sym).get.rhs
-				val partnerNode = {
+		val partnerNode = {
 			if (graphState.map.contains(sym.id))
 				graphState.map(sym.id)
-				else
-					getPartnerNode(sym.id, op)
+			else
+				getPartnerNode(sym.id, op)
 		}
 		graphState.map(sym.id) = partnerNode
-				val otherAttributes = getOtherAttributes(op).map( x=> "%s=%s".format(x._1, x._2)).mkString(",")
-				//    FileOutput.writeln("""%s [label="%s",%s];""".format(sym.id, getName(op), otherAttributes))
-				for (x <- getInputs(rhs)) {
-					val node = graphState.map(x)
-							graphState.builder += node ~> partnerNode
-				}
+		val otherAttributes = getOtherAttributes(op).map( x=> "%s=%s".format(x._1, x._2)).mkString(",")
+		for (x <- getInputs(rhs)) {
+			val node = graphState.map(x)
+					graphState.builder += node ~> partnerNode
+		}
 	
 		super.emitNode(sym, rhs)
-		//	System.out.println("%s from inputs %s".format(sym, getInputs(rhs)))
 	}
 
 }

@@ -50,7 +50,8 @@ trait StringOps extends Variables with OverloadHack {
   def infix_replaceAll(s : Rep[String], regex : Rep[String], rep : Rep[String])(implicit ctx: SourceContext) = string_replaceall(s, regex, rep)
   def infix_contains(s : Rep[String], substring : Rep[String])(implicit ctx: SourceContext) = string_contains(s, substring)
   def infix_isEmpty(s : Rep[String])(implicit ctx: SourceContext) = string_isempty(s)
-
+  def infix_matches(s : Rep[String], regex : Rep[String]) = string_matches(s, regex)
+  
   object String {
     def valueOf(a: Rep[Any])(implicit ctx: SourceContext) = string_valueof(a)
   }
@@ -64,6 +65,7 @@ trait StringOps extends Variables with OverloadHack {
   def string_replaceall(s : Rep[String], regex : Rep[String], repl : Rep[String])(implicit ctx: SourceContext) : Rep[String]
   def string_contains(s : Rep[String], substring : Rep[String])(implicit ctx: SourceContext) : Rep[Boolean]
   def string_isempty(s : Rep[String])(implicit ctx: SourceContext) : Rep[Boolean]
+  def string_matches(s : Rep[String], regex : Rep[String])(implicit ctx: SourceContext) : Rep[Boolean]
 }
 
 trait StringOpsExp extends StringOps with VariablesExp {
@@ -77,15 +79,19 @@ trait StringOpsExp extends StringOps with VariablesExp {
   case class StringContains(s: Exp[String], substring : Exp[String]) extends Def[Boolean]
   case class StringIsEmpty(s: Exp[String]) extends Def[Boolean]
 
-  def string_plus(s: Exp[Any], o: Exp[Any])(implicit ctx: SourceContext): Rep[String] = StringPlus(s,o)
-  def string_startswith(s1: Exp[String], s2: Exp[String])(implicit ctx: SourceContext) = StringStartsWith(s1,s2)
-  def string_trim(s: Exp[String])(implicit ctx: SourceContext) : Rep[String] = StringTrim(s)
-  def string_split(s: Exp[String], separators: Exp[String], limit : Exp[Int])(implicit ctx: SourceContext) : Rep[Array[String]] = StringSplit(s, separators, limit)
-  def string_valueof(a: Exp[Any])(implicit ctx: SourceContext) = StringValueOf(a)
-  def string_todouble(s: Exp[String])(implicit ctx: SourceContext) = StringToDouble(s)
-  def string_replaceall(s : Exp[String], regex : Exp[String], repl : Exp[String])(implicit ctx: SourceContext) = StringReplaceAll(s, regex, repl)
-  def string_contains(s : Exp[String], substring : Exp[String])(implicit ctx: SourceContext) = StringContains(s, substring)
-  def string_isempty(s : Exp[String])(implicit ctx: SourceContext) = StringIsEmpty(s)
+  case class StringPattern(regex : Exp[String]) extends Def[java.util.regex.Pattern]
+  case class StringMatches(string : Exp[String], pattern : Exp[java.util.regex.Pattern]) extends Def[Boolean]
+  
+  override def string_plus(s: Exp[Any], o: Exp[Any])(implicit ctx: SourceContext): Rep[String] = StringPlus(s,o)
+  override def string_startswith(s1: Exp[String], s2: Exp[String])(implicit ctx: SourceContext) = StringStartsWith(s1,s2)
+  override def string_trim(s: Exp[String])(implicit ctx: SourceContext) : Rep[String] = StringTrim(s)
+  override def string_split(s: Exp[String], separators: Exp[String], limit : Exp[Int])(implicit ctx: SourceContext) : Rep[Array[String]] = StringSplit(s, separators, limit)
+  override def string_valueof(a: Exp[Any])(implicit ctx: SourceContext) = StringValueOf(a)
+  override def string_todouble(s: Exp[String])(implicit ctx: SourceContext) = StringToDouble(s)
+  override def string_replaceall(s : Exp[String], regex : Exp[String], repl : Exp[String])(implicit ctx: SourceContext) = StringReplaceAll(s, regex, repl)
+  override def string_contains(s : Exp[String], substring : Exp[String])(implicit ctx: SourceContext) = StringContains(s, substring)
+  override def string_isempty(s : Exp[String])(implicit ctx: SourceContext) = StringIsEmpty(s)
+  override def string_matches(s : Exp[String], regex : Exp[String])(implicit ctx: SourceContext) = StringMatches(s, StringPattern(regex))
 
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Exp[A] = (e match {
     case StringPlus(a,b) => string_plus(f(a),f(b))
@@ -107,6 +113,8 @@ trait ScalaGenStringOps extends ScalaGenBase {
     case StringReplaceAll(s, regex, rep) => emitValDef(sym, "%s.replaceAll(%s, %s)".format(quote(s), quote(regex), quote(rep)))
     case StringContains(s, substring) => emitValDef(sym, "%s.contains(%s)".format(quote(s), quote(substring)))
     case StringIsEmpty(s) => emitValDef(sym, "%s.isEmpty()".format(quote(s)))
+    case StringPattern(s) => emitValDef(sym, "java.util.regex.Pattern.compile(%s)".format(quote(s)))
+    case StringMatches(s, pattern) => emitValDef(sym, "%s.matcher(%s).matches()".format(quote(pattern), quote(s)))
     case _ => super.emitNode(sym, rhs)
   }
 }
@@ -125,6 +133,8 @@ trait CudaGenStringOps extends CudaGenBase {
     case StringReplaceAll(s, regex, rep) => throw new GenerationFailedException("CudaGen: Not GPUable")
     case StringContains(s, substring) => throw new GenerationFailedException("CudaGen: Not GPUable")
     case StringIsEmpty(s) => throw new GenerationFailedException("CudaGen: Not GPUable")
+    case StringPattern(s) => throw new GenerationFailedException("CudaGen: Not GPUable")
+    case StringMatches(s, pattern) => throw new GenerationFailedException("CudaGen: Not GPUable")
     case _ => super.emitNode(sym, rhs)
   }
 }
@@ -143,6 +153,8 @@ trait OpenCLGenStringOps extends OpenCLGenBase {
     case StringReplaceAll(s, regex, rep) => throw new GenerationFailedException("OpenCLGen: Not GPUable")
     case StringContains(s, substring) => throw new GenerationFailedException("OpenCLGen: Not GPUable")
     case StringIsEmpty(s) => throw new GenerationFailedException("OpenCLGen: Not GPUable")
+    case StringPattern(s) => throw new GenerationFailedException("OpenCLGen: Not GPUable")
+    case StringMatches(s, pattern) => throw new GenerationFailedException("OpenCLGen: Not GPUable")
     case _ => super.emitNode(sym, rhs)
   }
 }
@@ -160,6 +172,8 @@ trait CGenStringOps extends CGenBase {
     case StringReplaceAll(s, regex, rep) => throw new GenerationFailedException("CGenStringOps: StringReplaceAll not implemented yet")
     case StringContains(s, substring) => throw new GenerationFailedException("CGenStringOps: StringContains not implemented yet")
     case StringIsEmpty(s) => throw new GenerationFailedException("CGenStringOps: StringIsEmpty not implemented yet")
+    case StringPattern(s) => throw new GenerationFailedException("CGenStringOps: StringPattern not implemented yet")
+    case StringMatches(s, pattern) => throw new GenerationFailedException("CGenStringOps: StringMatches not implemented yet")
     case _ => super.emitNode(sym, rhs)
   }
 }

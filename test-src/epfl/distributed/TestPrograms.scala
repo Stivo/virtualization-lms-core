@@ -32,18 +32,47 @@ trait VectorsProg extends VectorImplOps {
     val wordsTupled = wordsInLine.map((_, unit(1)))
     val wordsGrouped = wordsTupled.groupByKey
     wordsGrouped.reduce(_+_).save("counts")
-    wordsGrouped.map(_._1).save("distinct")
+    val distinct = wordsGrouped.reduce((x,y) => x).map(_._1)
+    distinct.save("distinct")
     val logEntries = Vector[String]("logs")
-//    logEntries
-//    logEntries.map(_.contains(" ")).save("asdf")
-//    v1.save("allWords")
-    wordsTupled.save("wordsTupled")
-    //v1
-//    v1.map(_+1).flatten(v1).save("flattened")
-//    v2.save("test")
-//    v1.map(x : Int => "")
-//    v3.map(Integer.parseInt(_)).flatten(v1)
-//    v2.map(_.startsWith("asdf")).map(!_)
+//    wordsTupled.save("wordsTupled")
+    distinct
+  }
+  
+   def twoStage(x: Rep[Unit]) = {
+    //RandomVector(7) + (ZeroVector(7) + RandomVector(7))
+    val words = Vector[String]("words2")
+    val wordsInLine = words.flatMap( _.split(" ").toSeq)
+//    words.map(_.contains(" ")).save("lines with more than one word")
+    val wordsTupled = wordsInLine.map((_, unit(1)))
+    val wordsGrouped = wordsTupled.groupByKey
+    val counted = wordsGrouped.reduce(_+_)
+    val inverted = counted.map(x => (x._2,x._1))
+    inverted.map(x => (unit(0), x)).groupByKey.reduce((x,y) => if (x._1 > y._1) x else y).save("asdf")
+    val invertedGrouped = inverted.groupByKey
+    invertedGrouped.save("inverted")
+  }
+
+  
+  class HadoopContext() {
+    def getPath() : Rep[String] = unit("asdf")
+  }
+  
+  def logAnalysis(x : Rep[Unit]) = {
+    val inputPath = "asf"
+    val lines = Vector[String](inputPath)
+    val years = lines.flatMap(_.split(" ").toSeq).flatMap(_.split("/").toSeq)
+		.filter(_.matches("18\\d{2}"))
+	years.save("years")
+	years
+  }
+  def trends(x : Rep[Unit]) = {
+    val context = new HadoopContext()
+    val inputPath = "asf"
+    val lines = Vector[String](inputPath)
+    val years = lines.map((context.getPath(),_))
+	years.save("years")
+	years
   }
   
 }
@@ -54,6 +83,7 @@ class TestVectors extends FileDiffSuite {
   
   def testVectors {
 //    withOutput(System.err/*"test-out/epfl/test-dist"*/) {    
+    try {
       println("-- begin")
 
       val dsl = new VectorsProg with VectorOpsExp with VectorImplOps 
@@ -62,21 +92,14 @@ class TestVectors extends FileDiffSuite {
       val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
       codegenDeps.emitSource(dsl.wordCount, "g", new PrintWriter(System.out))
       val graph = new GraphVizExport { val IR: dsl.type = dsl }
-//      val r = { val x = fresh; x+1 }
-//      graph.emitDepGraph(r, "test.dot")
-//      new StringsProg with VectorsExp with VectorsImplExternal
-//      with CompileScala { self =>
-//        val codegen = new ScalaGenFunctions with ScalaGenUtil { val IR: self.type = self }
-//        codegen.emitSource(test, "Test", new PrintWriter(System.out))
-//        val g = compile(test)
-//        println(g(0))
-//      }
 
       println("-- end")
 //    }
 //      FileOutput.finish
 //      println(FileOutput.sw.toString)
-      
+    } catch {
+      case e => e.printStackTrace
+    }
     //assert(true, "did finish")    
   }
 }
