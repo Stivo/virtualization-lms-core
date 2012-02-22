@@ -23,20 +23,20 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 
 	class MscrPart (var mscr : Mscr = null)
 
-	class Mapper(val input : Node) extends MscrPart {
+	case class Mapper(val input : Node) extends MscrPart {
 		override def toString() = "M(%s)".format(input.id)
 	}
 
-	class Reducer(val firstNode : Node) extends MscrPart {
+	case class Reducer(val firstNode : Node) extends MscrPart {
 		override def toString() = "R(%s)".format(firstNode.id)
 	}
 	
-	class GroupByKeyPart(val groupByKey : Node) extends MscrPart {
+	case class GroupByKeyPart(val groupByKey : Node) extends MscrPart {
 	    groupByKey.mscrPart += this
         override def toString() = "GBK(%s)".format(groupByKey.id)
 	}
 	
-	class Mscr(val mappers : Buffer[Mapper], val reducers : Buffer[Reducer], val groups : Buffer[GroupByKeyPart]) {
+	case class Mscr(val mappers : List[Mapper], val reducers : List[Reducer], val groups : List[GroupByKeyPart]) {
 		def all = mappers ++ reducers ++ groups
 		all.foreach(_.mscr = this)
 		override def toString() = "MSCR: %sM, %sGBK, %sR".format(mappers.size, groups.size, reducers.size)
@@ -74,8 +74,9 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 		case Reflect(VectorSave(Sym(x), _),_,_) => Save(id)
 		case VectorGroupByKey(Sym(x)) => GroupByKey(id)
 		case VectorReduce(Sym(x), f) => Combine(id)
-		case Reify(Sym(x),_,_) => Ignore(id)
-		case _ => throw new RuntimeException("todo")
+		case Reify(Sym(x),_,_) => Save(id)
+		case Reify(_,_,_) => Save(id)
+		case _ => throw new RuntimeException("TODO: Add Partner Node for "+x)
 	}
 	
 	def getInputs(x : Any) : List[Int] = x match {
@@ -85,6 +86,7 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 		case VectorFilter(Sym(x), _) => List(x)
 		case Reflect(VectorSave(Sym(x), _),_,_) => List(x)
 		case Reify(Sym(x),_,_) => List(x)
+		case Reify(_,_,_) => Nil
 		case VectorGroupByKey(Sym(x)) => List(x)
 		case VectorReduce(Sym(x), f) => List(x)
 		case _ => Nil
@@ -132,6 +134,52 @@ class GraphState {
 		sw.toString()
 	}
 
+	def getNodeNotes(node : Node) : String = {
+	  object StartOfMapper {
+	    def unapply(node : Node) = if (node.mscrPart.size==1) {
+	     node.mscrPart.head match {
+	       case m@Mapper(node) => Some(m)
+	       case _ => None
+	     }
+	    } else {
+	       None
+	    }
+	  }
+  	    node match {
+	      case StartOfMapper(x) if x.input == node => return "read from mapper input and convert"
+	      case _ => 
+	    }
+	  ""
+	}
+	
+	def getEdgeNotes(from : Node, to : Node) : String = {
+	  
+	  def getMscr(node : Node) = node.mscrPart.head.mscr
+	  if (getMscr(from)!=getMscr(to)) {
+	    return "Create intermediate store / read"
+	  }
+	  to match {
+	    case GroupByKey(x) => 
+	    	return if (getMscr(to).groups.size > 1) {
+	    	  "emit key with tag "+getMscr(to).groups.indexWhere(_.groupByKey==to) 
+	    	} else {
+	    	  "emit"
+	    	}
+	    case _ => 
+	  }
+	  from match {
+	    case GroupByKey(x) => 
+	    	if (getMscr(from).groups.size > 1) {
+	    	  return "use only keys with tag"+getMscr(from).groups.indexWhere(_.groupByKey==from) 
+	    	} 
+	    case _ => 
+	  }
+	  if (getMscr(from)!=getMscr(to)) {
+	    return "Create intermediate store / read"
+	  }
+	  ""
+	}
+	
 	def createMSCRs(graph : Graph[NodeType, EdgeType]) : Iterable[Mscr] = {
 
 		val inputNodes = graph.nodes.filter(_.isRead).map(_.value)
@@ -259,7 +307,7 @@ class GraphState {
 					nodes.foreach(_.mscrPart += red)
 					red
 				}
-				out += new Mscr(mappers.toBuffer, reducers.toBuffer, groups.toBuffer)
+				out += new Mscr(mappers.toList, reducers.toList, groups.toList)
 				()
 			}
 			out
@@ -294,7 +342,8 @@ class GraphState {
 				sw.write("}\n")
 			}
 			for (edge <- graph.edges) {
-				sw.write("%s -> %s;\n".format(edge.from.id, edge.to.id))
+			  val notes = getEdgeNotes(edge.from.value, edge.to.value)
+				sw.write("%s -> %s [label=\"%s\"];\n".format(edge.from.id, edge.to.id, notes))
 			}
 			sw.write("}")
 			sw.toString()

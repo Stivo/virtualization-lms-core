@@ -72,7 +72,6 @@ trait StringOpsExp extends StringOps with VariablesExp {
   case class StringPlus(s: Exp[Any], o: Exp[Any]) extends Def[String]
   case class StringStartsWith(s1: Exp[String], s2: Exp[String]) extends Def[Boolean]
   case class StringTrim(s: Exp[String]) extends Def[String]
-  case class StringSplit(s: Exp[String], separators: Exp[String], limit : Exp[Int]) extends Def[Array[String]]
   case class StringValueOf(a: Exp[Any]) extends Def[String]
   case class StringToDouble(s: Exp[String]) extends Def[Double]
   case class StringReplaceAll(s: Exp[String], regex : Exp[String], rep : Exp[String]) extends Def[String]
@@ -80,12 +79,13 @@ trait StringOpsExp extends StringOps with VariablesExp {
   case class StringIsEmpty(s: Exp[String]) extends Def[Boolean]
 
   case class StringPattern(regex : Exp[String]) extends Def[java.util.regex.Pattern]
+  case class StringSplit(s: Exp[String], pattern : Exp[java.util.regex.Pattern], limit : Exp[Int]) extends Def[Array[String]]
   case class StringMatches(string : Exp[String], pattern : Exp[java.util.regex.Pattern]) extends Def[Boolean]
   
   override def string_plus(s: Exp[Any], o: Exp[Any])(implicit ctx: SourceContext): Rep[String] = StringPlus(s,o)
   override def string_startswith(s1: Exp[String], s2: Exp[String])(implicit ctx: SourceContext) = StringStartsWith(s1,s2)
   override def string_trim(s: Exp[String])(implicit ctx: SourceContext) : Rep[String] = StringTrim(s)
-  override def string_split(s: Exp[String], separators: Exp[String], limit : Exp[Int])(implicit ctx: SourceContext) : Rep[Array[String]] = StringSplit(s, separators, limit)
+  override def string_split(s: Exp[String], separators: Exp[String], limit : Exp[Int])(implicit ctx: SourceContext) : Rep[Array[String]] = StringSplit(s, StringPattern(separators), limit)
   override def string_valueof(a: Exp[Any])(implicit ctx: SourceContext) = StringValueOf(a)
   override def string_todouble(s: Exp[String])(implicit ctx: SourceContext) = StringToDouble(s)
   override def string_replaceall(s : Exp[String], regex : Exp[String], repl : Exp[String])(implicit ctx: SourceContext) = StringReplaceAll(s, regex, repl)
@@ -107,7 +107,7 @@ trait ScalaGenStringOps extends ScalaGenBase {
     case StringPlus(s1,s2) => emitValDef(sym, "%s+%s".format(quote(s1), quote(s2)))
     case StringStartsWith(s1,s2) => emitValDef(sym, "%s.startsWith(%s)".format(quote(s1),quote(s2)))
     case StringTrim(s) => emitValDef(sym, "%s.trim()".format(quote(s)))
-    case StringSplit(s, sep, limit) => emitValDef(sym, "%s.split(%s, %s)".format(quote(s), quote(sep), quote(limit)))
+    case StringSplit(s, pattern, limit) => emitValDef(sym, "%s.split(%s, %s)".format(quote(pattern), quote(s), quote(limit)))
     case StringValueOf(a) => emitValDef(sym, "java.lang.String.valueOf(%s)".format(quote(a)))
     case StringToDouble(s) => emitValDef(sym, "%s.toDouble".format(quote(s)))
     case StringReplaceAll(s, regex, rep) => emitValDef(sym, "%s.replaceAll(%s, %s)".format(quote(s), quote(regex), quote(rep)))
