@@ -18,8 +18,11 @@ import scalax.collection.GraphTraversal._
 
 trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil with ScalaGenVector {
 	//val IR: dsl.type = dsl
-	val IR: VectorOpsExp
-	import IR._
+    val IR: VectorOpsExp
+//    import IR._
+	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
+	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce, TypedNode}
+	import IR.{findDefinition}
 
 	class MscrPart (var mscr : Mscr = null)
 
@@ -52,8 +55,17 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 		def isRead = false
 		def mscr = mscrPart.head.mscr
 		def isInGbkOrReducer = mscrPart.find(!_.isInstanceOf[Mapper]).isDefined
+		def getOriginal = Sym(id) match {
+		  case Def(d) => d
+		  case _ => throw new RuntimeException("Did not find symbol "+id)
+		}
+		def getTypes = getOriginal match {
+		  case x : TypedNode => x.getTypes
+		  case Reflect(x:TypedNode,_,_) => x.getTypes
+		  case _ => (manifest[Nothing],manifest[Nothing])
+		}
 	}
-	case class GroupByKey(override val id : Int) extends Node
+	case class GroupByKey(override val id : Int) extends Node 
 	case class FlatMap(override val id : Int) extends Node
 	case class Read(override val id : Int) extends Node {
 		override def isRead = true
@@ -325,7 +337,6 @@ class GraphState {
 					red
 				}
 				out += new Mscr(mappers.toList, reducers.toList, groups.toList)
-				()
 			}
 			out
 		}
@@ -365,6 +376,21 @@ class GraphState {
 			sw.write("}")
 			sw.toString()
 		}
+		
+		def writeTypes {
+		  val nodes = graph.nodes.map{x : { def value : Node } => x.value}.toList
+		  for (node <- nodes.sortBy(_.id)) {
+
+		    System.out.println(node.getOriginal)
+//		    System.out.println(node.getTypes.map(x => remap(x.getName)))
+		    System.out.println(node.getTypes)
+		  }
+	//	  graphState.graph.edges.map {
+	//	    SpecialEdge(_)
+	//	  }.filter(_.isDefined)
+		  
+		}
+	
 	
 		override def toString() = "GraphState "
 	}
@@ -382,17 +408,12 @@ class GraphState {
 	
 	def graphState = GraphState.get()
 	
-	def writeTypes {
-//	  graphState.graph.edges.map {
-//	    SpecialEdge(_)
-//	  }.filter(_.isDefined)
-	}
 	
 	override def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {
 		GraphState.set(null)
 		val out = super.emitSource(f, className, stream)
 		FileOutput.writeln(graphState.export)
-		writeTypes
+		graphState.writeTypes
 		out
 	}
 	

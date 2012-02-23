@@ -13,7 +13,7 @@ import internal.GraphVizExport
 import java.io.File
 import java.io.FileWriter
 import java.io.StringWriter
-
+import scala.reflect.SourceContext
 
 trait Utils extends Base with OverloadHack {
   
@@ -101,7 +101,7 @@ trait VectorOps extends VectorBase {
   //this: SimpleVector =>
 	//syntax
     object Vector {
-      def apply(file : Rep[String]) = vector_new(file)
+      def apply(file : Rep[String]) = vector_new[String](file)
     }
     implicit def repVecToVecOps[A:Manifest](vector: Rep[Vector[A]]) = new vecOpsCls(vector)
     implicit def repVecToVecIterableTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,Iterable[V])]]) = new vecIterableTupleOpsCls(x)
@@ -135,43 +135,68 @@ trait VectorOps extends VectorBase {
 
 
 trait VectorOpsExp extends VectorOps with VectorBaseExp {
-    case class NewVector[A : Manifest](file : Exp[String]) extends Def[Vector[String]] {
+  
+	trait TypedNode {
+	  def getTypes : (Manifest[_], Manifest[_])
+	}
+	
+	trait ChangingType extends TypedNode{
+	  this : {val mA : Manifest[_]; val mB : Manifest[_]} =>
+	  def getTypes = (mA, mB)
+	}
+	
+	trait PreservingType extends TypedNode{
+	  this : {val mA : Manifest[_]} =>
+	  def getTypes = (mA, mA)
+	}
+
+    case class NewVector[A : Manifest](file : Exp[String]) extends Def[Vector[String]]
+    		with TypedNode {
       val mA = manifest[A]
+      def getTypes = (manifest[Nothing], mA)
     }
     
     case class VectorMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[B]) //, convert : Exp[Int] => Exp[A])
-       extends Def[Vector[B]] {
+       extends Def[Vector[B]] with ChangingType {
       val mA = manifest[A]
       val mB = manifest[B]
     }
 
     case class VectorFilter[A : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[Boolean])
-       extends Def[Vector[A]] {
+       extends Def[Vector[A]] with PreservingType {
       val mA = manifest[A]
     }
     
     case class VectorFlatMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[Iterable[B]]) //, convert : Exp[Int] => Exp[A])
-       extends Def[Vector[B]] {
+       extends Def[Vector[B]] with ChangingType {
       val mA = manifest[A]
       val mB = manifest[B]
     }
    
-    case class VectorFlatten[A : Manifest](v1 : Exp[Vector[A]], v2 : Exp[Vector[A]]) extends Def[Vector[A]] {
+    case class VectorFlatten[A : Manifest](v1 : Exp[Vector[A]], v2 : Exp[Vector[A]]) extends Def[Vector[A]] 
+    		with PreservingType {
       val mA = manifest[A]
     }
 
-    case class VectorGroupByKey[K : Manifest, V : Manifest](v1 : Exp[Vector[(K,V)]]) extends Def[Vector[(K, Iterable[V])]] {
+    case class VectorGroupByKey[K : Manifest, V : Manifest](v1 : Exp[Vector[(K,V)]]) extends Def[Vector[(K, Iterable[V])]] 
+    		with TypedNode{
       val mKey = manifest[K]
       val mValue = manifest[V]
+      val mOutType = manifest[(K,Iterable[V])]
+      def getTypes = (mKey, mOutType)
     }
     
-    case class VectorReduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V]) extends Def[Vector[(K, V)]] {
+    case class VectorReduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V]) 
+    	extends Def[Vector[(K, V)]] with TypedNode{
       val mKey = manifest[K]
-      val mValue = manifest[V]      
+      val mValue = manifest[V]
+      def getTypes = (mKey, mValue)
     }
     
-    case class VectorSave[A : Manifest](vector : Exp[Vector[A]], path : Rep[String]) extends Def[Unit] {
+    case class VectorSave[A : Manifest](vector : Exp[Vector[A]], path : Rep[String]) extends Def[Unit]
+    		with TypedNode{
     	val mA = manifest[A]
+    	def getTypes = (mA, manifest[Nothing])
     }
     
     override def vector_new[A: Manifest](file : Exp[String]) = NewVector[A](file)
@@ -182,6 +207,19 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp {
     override def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) = VectorFlatten(vector1, vector2)
     override def vector_reduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V] ) = VectorReduce(vector, f)
     override def vector_groupByKey[K: Manifest, V : Manifest](vector : Exp[Vector[(K,V)]]) = VectorGroupByKey(vector)
+    
+    override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Exp[A] = (e match {
+    //case Copy(a) => f(a)
+        case vm@NewVector(vector) => toAtom(NewVector(f(vector))(vm.mA))(mtype(vm.mA), implicitly[SourceContext])
+	    case vm@VectorMap(vector,func) => toAtom(VectorMap(f(vector), f(func))(vm.mA, vm.mB))(mtype(vm.mB), implicitly[SourceContext])
+	    case vf@VectorFilter(vector,func) => toAtom(VectorFilter(f(vector), f(func))(vf.mA))(mtype(manifest[A]), implicitly[SourceContext])
+	    case vfm@VectorFlatMap(vector,func) => toAtom(VectorFlatMap(f(vector), f(func))(vfm.mA, vfm.mB))(mtype(manifest[A]), implicitly[SourceContext])
+	    case gbk@VectorGroupByKey(vector) => toAtom(VectorGroupByKey(f(vector))(gbk.mKey, gbk.mValue))(mtype(manifest[A]), implicitly[SourceContext])
+	    case Reflect(vs@VectorSave(vector, path), u, es) => reflectMirrored(Reflect(VectorSave(f(vector), f(path))(vs.mA), mapOver(f,u), f(es)))
+	    case Reify(x, u, es) => toAtom(Reify(f(x), mapOver(f,u), f(es)))(mtype(manifest[A]), implicitly[SourceContext])
+	    case _ => super.mirror(e,f)
+	}).asInstanceOf[Exp[A]]
+
 }
 
 trait VectorImplOps extends VectorOps with FunctionsExp with UtilExp {
@@ -191,6 +229,8 @@ trait VectorImplOps extends VectorOps with FunctionsExp with UtilExp {
 trait ScalaGenVector extends ScalaGenBase {
   val IR: VectorOpsExp
   import IR._
+//  import IR.{Sym, Def, Exp}
+//  import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce}
     override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter) = rhs match {
       case nv@NewVector(filename) => emitValDef(sym, "New vector created from %s with type %s".format(filename, nv.mA))
       case vs@VectorSave(vector, filename) => stream.println("Saving vector %s (of type %s) to %s".format(vector, vs.mA, filename))
