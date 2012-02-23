@@ -101,7 +101,7 @@ trait VectorOps extends VectorBase {
   //this: SimpleVector =>
 	//syntax
     object Vector {
-      def apply[A : Manifest](file : Rep[String]) = vector_new(file)
+      def apply(file : Rep[String]) = vector_new(file)
     }
     implicit def repVecToVecOps[A:Manifest](vector: Rep[Vector[A]]) = new vecOpsCls(vector)
     implicit def repVecToVecIterableTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,Iterable[V])]]) = new vecIterableTupleOpsCls(x)
@@ -123,7 +123,7 @@ trait VectorOps extends VectorBase {
     }
 
     //operations
-    def vector_new[A:Manifest](file : Rep[String]): Rep[Vector[A]]
+    def vector_new[A:Manifest](file : Rep[String]): Rep[Vector[String]]
     def vector_map[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[B]) : Rep[Vector[B]]
     def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) : Rep[Vector[B]]
     def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Rep[A] => Rep[Boolean]) : Rep[Vector[A]]
@@ -135,7 +135,7 @@ trait VectorOps extends VectorBase {
 
 
 trait VectorOpsExp extends VectorOps with VectorBaseExp {
-    case class NewVector[A : Manifest](file : Exp[String]) extends Def[Vector[A]] {
+    case class NewVector[A : Manifest](file : Exp[String]) extends Def[Vector[String]] {
       val mA = manifest[A]
     }
     

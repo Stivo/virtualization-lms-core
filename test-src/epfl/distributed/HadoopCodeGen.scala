@@ -24,16 +24,16 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 	class MscrPart (var mscr : Mscr = null)
 
 	case class Mapper(val input : Node) extends MscrPart {
-		override def toString() = "M(%s)".format(input.id)
+		override def toString() = "M_%s".format(input.id)
 	}
 
 	case class Reducer(val firstNode : Node) extends MscrPart {
-		override def toString() = "R(%s)".format(firstNode.id)
+		override def toString() = "R_%s".format(firstNode.id)
 	}
 	
 	case class GroupByKeyPart(val groupByKey : Node) extends MscrPart {
 	    groupByKey.mscrPart += this
-        override def toString() = "GBK(%s)".format(groupByKey.id)
+        override def toString() = "GBK_%s".format(groupByKey.id)
 	}
 	
 	case class Mscr(val mappers : List[Mapper], val reducers : List[Reducer], val groups : List[GroupByKeyPart]) {
@@ -50,7 +50,7 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 		var mscrPart = Buffer[MscrPart]()
 		def name = toString//.takeWhile(_!='(')
 		def isRead = false
-		
+		def mscr = mscrPart.head.mscr
 		def isInGbkOrReducer = mscrPart.find(!_.isInstanceOf[Mapper]).isDefined
 	}
 	case class GroupByKey(override val id : Int) extends Node
@@ -95,6 +95,7 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 	def getName(x : Any) : String = x match {
 		case Reflect(VectorSave(Sym(x), Const(name)),_,_) => "Save to %s".format(name)
 		case VectorMap(vec, x) => "FlatMap (Map)"
+		case VectorFilter(vec, x) => "FlatMap (Filter)"
 		case VectorFlatMap(vec, x) => "FlatMap"
 		case NewVector(Const(name)) => "Read from %s".format(name)
 		case VectorFlatten(v1, v2) => "Flatten"
@@ -152,6 +153,29 @@ class GraphState {
 	  ""
 	}
 	
+	object TaggedGroupByKey {
+	  def unapply(node : Node) = 
+	  node match {
+	    case GroupByKey(id) if (node.mscr.groups.size > 1) => 
+	      	Some((node,node.mscr.groups.indexWhere(_.groupByKey==node)))
+	    case _ => None
+	  }
+	}
+	
+//	object SpecialEdge {
+//	  def unapply(edge : DiEdge[Node]) = edge match {
+//	    case TaggedKeyEdge(edge) => Some(edge)
+//	    case _ => None
+//	  }
+//	}
+//	object TaggedKeyEdge {
+//	  def unapply(edge : graph.EdgeT) = edge match{
+//	    case TaggedGroupByKey(edge.to, tag)  => Some(edge)
+//	    case TaggedGroupByKey(edge.from, tag)  => Some(edge)
+//	    case _ => None
+//	  }
+//	}
+	
 	def getEdgeNotes(from : Node, to : Node) : String = {
 	  
 	  def getMscr(node : Node) = node.mscrPart.head.mscr
@@ -159,19 +183,12 @@ class GraphState {
 	    return "Create intermediate store / read"
 	  }
 	  to match {
-	    case GroupByKey(x) => 
-	    	return if (getMscr(to).groups.size > 1) {
-	    	  "emit key with tag "+getMscr(to).groups.indexWhere(_.groupByKey==to) 
-	    	} else {
-	    	  "emit"
-	    	}
+	    case TaggedGroupByKey(x, tag) => return "emit key with tag "+tag 
+	    case GroupByKey(x) => return "emit"
 	    case _ => 
 	  }
 	  from match {
-	    case GroupByKey(x) => 
-	    	if (getMscr(from).groups.size > 1) {
-	    	  return "use only keys with tag"+getMscr(from).groups.indexWhere(_.groupByKey==from) 
-	    	} 
+	    case TaggedGroupByKey(x, tag) => return "use only keys with tag "+tag 
 	    case _ => 
 	  }
 	  if (getMscr(from)!=getMscr(to)) {
@@ -365,10 +382,17 @@ class GraphState {
 	
 	def graphState = GraphState.get()
 	
+	def writeTypes {
+//	  graphState.graph.edges.map {
+//	    SpecialEdge(_)
+//	  }.filter(_.isDefined)
+	}
+	
 	override def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {
 		GraphState.set(null)
 		val out = super.emitSource(f, className, stream)
 		FileOutput.writeln(graphState.export)
+		writeTypes
 		out
 	}
 	
