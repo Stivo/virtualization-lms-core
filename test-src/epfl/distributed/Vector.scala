@@ -229,8 +229,6 @@ trait VectorImplOps extends VectorOps with FunctionsExp with UtilExp {
 trait ScalaGenVector extends ScalaGenBase {
   val IR: VectorOpsExp
   import IR._
-//  import IR.{Sym, Def, Exp}
-//  import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce}
     override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter) = rhs match {
       case nv@NewVector(filename) => emitValDef(sym, "New vector created from %s with type %s".format(filename, nv.mA))
       case vs@VectorSave(vector, filename) => stream.println("Saving vector %s (of type %s) to %s".format(vector, vs.mA, filename))

@@ -19,7 +19,6 @@ import scalax.collection.GraphTraversal._
 trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil with ScalaGenVector {
 	//val IR: dsl.type = dsl
     val IR: VectorOpsExp
-//    import IR._
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce, TypedNode}
 	import IR.{findDefinition}
@@ -380,15 +379,9 @@ class GraphState {
 		def writeTypes {
 		  val nodes = graph.nodes.map{x : { def value : Node } => x.value}.toList
 		  for (node <- nodes.sortBy(_.id)) {
-
 		    System.out.println(node.getOriginal)
-//		    System.out.println(node.getTypes.map(x => remap(x.getName)))
 		    System.out.println(node.getTypes)
 		  }
-	//	  graphState.graph.edges.map {
-	//	    SpecialEdge(_)
-	//	  }.filter(_.isDefined)
-		  
 		}
 	
 	
@@ -397,8 +390,7 @@ class GraphState {
 	object GraphState extends ThreadLocal[GraphState]{
 		override def get = {
 		  var out = super.get
-		  // ugly null test, some bug
-		  if (!out.isInstanceOf[GraphState]) {
+		  if (out == null) {
 		    out = new GraphState()
 		    super.set(out)
 		  }
@@ -430,9 +422,8 @@ class GraphState {
 		val otherAttributes = getOtherAttributes(op).map( x=> "%s=%s".format(x._1, x._2)).mkString(",")
 		for (x <- getInputs(rhs)) {
 			val node = graphState.map(x)
-					graphState.builder += node ~> partnerNode
+			graphState.builder += node ~> partnerNode
 		}
-	
 		super.emitNode(sym, rhs)
 	}
 

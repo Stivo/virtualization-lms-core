@@ -21,6 +21,14 @@ trait VectorsProg extends VectorImplOps {
   // How to implement map in terms of flatMap?
   // use ParallelDo instead of flatMap? Has notion of emitter
   
+  def simple(x : Rep[Unit]) = {
+    val words1 = Vector("words1")
+    words1.map(_+"asdf")
+    .map(_+"asdf")
+    .save("words")
+    unit(())
+  }
+  
   def wordCount(x: Rep[Unit]) = {
     //RandomVector(7) + (ZeroVector(7) + RandomVector(7))
     val words2 = Vector("words1")
