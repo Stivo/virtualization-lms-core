@@ -106,19 +106,40 @@ trait TranslateExp extends LetExp {
   def translate_node[A:Manifest](sym: IR.Sym[A], rhs: IR.Def[A]): Exp[A]
 }
 
+trait OtherIR extends BaseExp {
+  case class Plus2(a : Rep[Double], b : Rep[Double]) extends Def[Double]
+  case class Minus2(a : Rep[Double], b : Rep[Double]) extends Def[Double]
+  case class Times2(a : Rep[Double], b : Rep[Double]) extends Def[Double]
+  case class Div2(a : Rep[Double], b : Rep[Double]) extends Def[Double]
+}
 
 trait TranslateArith extends TranslateExp with ArithExp {
   val IR: ArithExp
+  val IR2 : OtherIR
+
+//  implicit def convertDouble(rep : IR.Rep[Double]) : IR2.Rep[Double]= IR2.Rep[Double](rep)
   
   // Translation is currently very awkward... 
-  def translate_node[A:Manifest](sym: IR.Sym[A], rhs: IR.Def[A]): Exp[A] = rhs match {
-    case IR.Plus(a, b) => ((a - b) : Exp[Double]).asInstanceOf[Exp[A]]
-    case IR.Minus(a, b) => ((a + b) : Exp[Double]).asInstanceOf[Exp[A]]
-    case IR.Times(a, b) => ((a / b) : Exp[Double]).asInstanceOf[Exp[A]]
-    case IR.Div(a, b) => ((a * b) : Exp[Double]).asInstanceOf[Exp[A]]    
-  }
+  def translate_node[A:Manifest](sym: IR.Sym[A], rhs: IR.Def[A]): Exp[A] = (rhs match {
+    case IR.Plus(a, b) => IR2.Plus2(a, b)
+    case IR.Minus(a, b) => IR2.Minus2(a, b)
+    case IR.Times(a, b) => IR2.Times2(a, b)
+    case IR.Div(a, b) => IR2.Div2(a,b) 
+  }).asInstanceOf[Exp[A]]
 } 
 
+trait ScalaGenArith2 extends ScalaGenBase {
+  val IR: OtherIR
+  import IR._
+  
+  override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter) = rhs match {
+    case Plus2(a,b) =>  emitValDef(sym, "" + quote(a) + "+" + quote(b)+" //from other IR")
+    case Minus2(a,b) => emitValDef(sym, "" + quote(a) + "-" + quote(b)+" //from other IR")
+    case Times2(a,b) => emitValDef(sym, "" + quote(a) + "*" + quote(b)+" //from other IR")
+    case Div2(a,b) =>   emitValDef(sym, "" + quote(a) + "/" + quote(b)+" //from other IR")
+    case _ => super.emitNode(sym, rhs)
+  }
+}
 
 
 class Test2StepTranslation extends FileDiffSuite{
@@ -128,15 +149,18 @@ class Test2StepTranslation extends FileDiffSuite{
   val test = new TestArith with ArithExpOpt
   val gen  = new ScalaGenArith { val IR: test.type = test }
   
-  withOutFile(prefix+"1st-stage"){
+  //withOutFile(prefix+"1st-stage"){
+  println (captureOutput{
     gen.emitSource(test.testFunction, "test", new PrintWriter(new IndentWriter(System.out)))
-  }
+  })
   
-  val tst2 = new TranslateArith { val IR: test.type = test }
-  val gen2 = new ScalaGenArith with ScalaGenLet { val IR: tst2.type = tst2 }
+  val ir2 = new TestArith with ArithExpOpt with OtherIR { val IR : ArithExp = test}
+  val tst2 = new TranslateArith { val IR: ir2.type = ir2 }
+  val gen2 = new ScalaGenArith2 with ScalaGenLet { val IR: tst2.type = tst2 }
 
-  withOutFile(prefix+"2nd-stage"){
+//  withOutFile(prefix+"2nd-stage"){
+    println (captureOutput{
     gen2.emitSource(tst2.translate(test.testFunction), "test", new PrintWriter(new IndentWriter(System.out)))
-  }
+  })
 
 }
