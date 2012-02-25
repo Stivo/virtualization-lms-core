@@ -3,6 +3,7 @@ package epfl
 package distributed
 
 import common._
+import scala.virtualization.lms.internal._
 import test1._
 import util.OverloadHack
 import java.io.PrintWriter
@@ -15,72 +16,21 @@ import java.io.FileWriter
 import java.io.StringWriter
 import scala.reflect.SourceContext
 
-trait Utils extends Base with OverloadHack {
-  
-  def infix_+(a: Rep[String], b: Rep[Any])(implicit x: Overloaded1): Rep[String]
-  def infix_+(a: Rep[Any], b: Rep[String])(implicit x: Overloaded2): Rep[String]
-  def infix_+(a: String, b: Rep[Any])(implicit x: Overloaded4): Rep[String]
-  def infix_+(a: Rep[Any], b: String)(implicit x: Overloaded5): Rep[String]
-  
-  implicit def unit(x:String): Rep[String]
-  implicit def unit(x:Int): Rep[Int]
-  
-}
-
-
-trait UtilExp extends BaseExp with Utils {
-
-  implicit def unit(x:Int): Rep[Int] = Const(x)
-  implicit def unit(x:String): Rep[String] = Const(x)
-  
-  def infix_+(a: Rep[String], b: Rep[Any])(implicit x: Overloaded1): Rep[String] = StrCat(a,b)
-  def infix_+(a: Rep[Any], b: Rep[String])(implicit x: Overloaded2): Rep[String] = StrCat(a,b)
-  def infix_+(a: String, b: Rep[Any])(implicit x: Overloaded4): Rep[String] = StrCat(Const(a),b)
-  def infix_+(a: Rep[Any], b: String)(implicit x: Overloaded5): Rep[String] = StrCat(a,Const(b))
-
-  case class StrCat(a: Exp[Any],b: Exp[Any]) extends Def[String]
-
-  case class Tup[A,B](a: Exp[A],b: Exp[B]) extends Def[(A,B)]
-  
-  case class External[A:Manifest](s: String, fmt_args: List[Exp[Any]] = List()) extends Exp[A]
-  
-}
-
-trait ScalaGenUtil extends ScalaGenBase {
-  val IR: UtilExp
-  import IR._
-  
-  // case External(s: String, args: List[Exp[Any]]) => s.format(args map (quote(_)) : _*)
-  
-  override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter) = rhs match {
-    case StrCat(a,b) =>
-      emitValDef(sym, quote(a) + ".toString + " + quote(b) + ".toString")
-    case Tup(a,b) =>
-      emitValDef(sym, "("+ quote(a) + "," + quote(b) + ")")
-    case _ => super.emitNode(sym, rhs)
-  }
-
-  override def quote(x: Exp[Any]) = x match {
-    case External(s: String, args: List[Exp[Any]]) => s.format(args map (quote(_)) : _*)
-    case _ => super.quote(x)
-  }
-
-
-}
-
 trait Vector[A] {
   //val elementType = manifest[A]
   //val elementType : Class[A]
 
 }
 
-trait VectorBase extends Base
+
+
+trait VectorBase extends Base with LiftAll
   with Equal with IfThenElse with Variables with While with Functions
   with ImplicitOps with NumericOps with OrderingOps with StringOps
   with BooleanOps with PrimitiveOps with MiscOps with TupleOps
   with MathOps with CastingOps with ObjectOps with ArrayOps
 
-trait VectorBaseExp extends VectorBase with UtilExp
+trait VectorBaseExp extends VectorBase
   with DSLOpsExp
   with EqualExp with IfThenElseExp with VariablesExp with WhileExp with FunctionsExp
   with ImplicitOpsExp with NumericOpsExp with OrderingOpsExp with StringOpsExp
@@ -88,16 +38,18 @@ trait VectorBaseExp extends VectorBase with UtilExp
   with MathOpsExp with CastingOpsExp with ObjectOpsExp with ArrayOpsExp with RangeOpsExp
   with StructExp
 
-//trait VectorBaseCodeGenPkg extends ScalaGenDSLOps
-//  with ScalaGenEqual with ScalaGenIfThenElse with ScalaGenVariables with ScalaGenWhile with ScalaGenFunctions
-//  with ScalaGenImplicitOps with ScalaGenNumericOps with ScalaGenOrderingOps //with ScalaGenStringOps
-//  with ScalaGenBooleanOps with ScalaGenPrimitiveOps with ScalaGenMiscOps with ScalaGenTupleOps
-//  with ScalaGenMathOps with ScalaGenCastingOps with ScalaGenObjectOps with ScalaGenArrayOps with ScalaGenRangeOps
-//  with ScalaGenStruct
-//  { val IR: VectorOpsExp }
+//trait VectorBaseCodeGenPkg extends ScalaGen
+  
+trait VectorBaseCodeGenPkg extends ScalaGenDSLOps
+  with ScalaGenEqual with ScalaGenIfThenElse with ScalaGenVariables with ScalaGenWhile with ScalaGenFunctions
+  with ScalaGenImplicitOps with ScalaGenNumericOps with ScalaGenOrderingOps with ScalaGenStringOps
+  with ScalaGenBooleanOps with ScalaGenPrimitiveOps with ScalaGenMiscOps with ScalaGenTupleOps
+  with ScalaGenMathOps with ScalaGenCastingOps with ScalaGenObjectOps with ScalaGenArrayOps with ScalaGenRangeOps
+  with ScalaGenStruct
+  { val IR: VectorOpsExp }
 
 
-trait VectorOps extends VectorBase {
+trait VectorOps extends VectorBase with Functions {
   //this: SimpleVector =>
 	//syntax
     object Vector {
@@ -124,9 +76,9 @@ trait VectorOps extends VectorBase {
 
     //operations
     def vector_new[A:Manifest](file : Rep[String]): Rep[Vector[String]]
-    def vector_map[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[B]) : Rep[Vector[B]]
+    def vector_map[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A => B]) : Rep[Vector[B]]
     def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) : Rep[Vector[B]]
-    def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Rep[A] => Rep[Boolean]) : Rep[Vector[A]]
+    def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Rep[A => Boolean]) : Rep[Vector[A]]
     def vector_save[A : Manifest](vector : Rep[Vector[A]], path : Rep[String]) : Rep[Unit]
     def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) : Rep[Vector[A]]
     def vector_reduce[K: Manifest, V : Manifest](vector : Rep[Vector[(K,Iterable[V])]], f : (Rep[V], Rep[V]) => Rep[V] ) : Rep[Vector[(K, V)]]
@@ -134,7 +86,8 @@ trait VectorOps extends VectorBase {
 }
 
 
-trait VectorOpsExp extends VectorOps with VectorBaseExp {
+trait VectorOpsExp extends VectorOps with VectorBaseExp with Functions {
+
   
 	trait TypedNode {
 	  def getTypes : (Manifest[_], Manifest[_])
@@ -156,13 +109,13 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp {
       def getTypes = (manifest[Nothing], mA)
     }
     
-    case class VectorMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[B]) //, convert : Exp[Int] => Exp[A])
+    case class VectorMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A => B]) //, convert : Exp[Int] => Exp[A])
        extends Def[Vector[B]] with ChangingType {
       val mA = manifest[A]
       val mB = manifest[B]
     }
 
-    case class VectorFilter[A : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[Boolean])
+    case class VectorFilter[A : Manifest](in : Exp[Vector[A]], func : Exp[A => Boolean])
        extends Def[Vector[A]] with PreservingType {
       val mA = manifest[A]
     }
@@ -200,9 +153,9 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp {
     }
     
     override def vector_new[A: Manifest](file : Exp[String]) = NewVector[A](file)
-    override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A] => Exp[B]) = VectorMap[A, B](vector, f)
+    override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A => B]) = VectorMap[A, B](vector, f)
     override def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) = VectorFlatMap(vector, f)
-    override def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Exp[A] => Exp[Boolean]) = VectorFilter(vector, f)
+    override def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Exp[A => Boolean]) = VectorFilter(vector, f)
     override def vector_save[A : Manifest](vector : Exp[Vector[A]], file : Exp[String]) = reflectEffect(VectorSave[A](vector, file))
     override def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) = VectorFlatten(vector1, vector2)
     override def vector_reduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V] ) = VectorReduce(vector, f)
@@ -220,9 +173,38 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp {
 	    case _ => super.mirror(e,f)
 	}).asInstanceOf[Exp[A]]
 
+    
+  override def syms(e: Any): List[Sym[Any]] = e match { //TR TODO: question -- is alloc a dependency (should be part of result) or a definition (should not)???
+                                                        // aks: answer -- we changed it to be internal to the op to make things easier for CUDA. not sure if that still needs
+                                                        // to be the case. similar question arises for sync
+    case s: VectorMap[_,_]  => syms(s.func, s.in) ++ super.syms(e) // super call: add case class syms (iff flag is set)
+    case _ => super.syms(e)
+  }
+    
+   override def readSyms(e: Any): List[Sym[Any]] = e match { //TR FIXME: check this is actually correct
+    case s: VectorMap[_,_]  => syms(s.func, s.in) ++ super.syms(e) // super call: add case class syms (iff flag is set)
+    case _ => super.readSyms(e)
+  }
+  
+  override def boundSyms(e: Any): List[Sym[Any]] = e match {
+    case s: VectorMap[_,_]  => effectSyms(s.func, s.in)
+    case _ => super.boundSyms(e)
+  }
+
+  
+  override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
+    case s: VectorMap[_,_]  => freqHot(s.func)++freqNormal(s.in)
+    case _ => super.symsFreq(e)
+  }
+  
+	/////////////////////
+  // aliases and sharing
+  // TODO
+
+    
 }
 
-trait VectorImplOps extends VectorOps with FunctionsExp with UtilExp {
+trait VectorImplOps extends VectorOps with FunctionsExp  {
   
 }
 
@@ -241,6 +223,74 @@ trait ScalaGenVector extends ScalaGenBase {
     case _ => super.emitNode(sym, rhs)
   }
 }
+
+trait SparkGenVector extends ScalaGenBase {
+  val IR: VectorOpsExp
+	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
+	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce, TypedNode}
+	import IR.{findDefinition, fresh, reifyEffects, reifyEffectsHere,toAtom}
+	
+  override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter) = 
+    {val out = rhs match {
+      case nv@NewVector(filename) => emitValDef(sym, "sc.textFile(%s)".format(quote(filename)))
+      case vs@VectorSave(vector, filename) => stream.println("%s.saveAsTextFile(%s)".format(quote(vector), quote(filename)))
+      case vm@VectorMap(vector, function) => {emitValDef(sym, "%s.map(%s) // type after %s".format(quote(vector), quote(function), vm.mB))}
+      case vf@VectorFilter(vector, function) => emitValDef(sym, "%s.filter(%s)".format(quote(vector), quote(function)))
+      case vm@VectorFlatMap(vector, function) => emitValDef(sym, "flat mapping vector %s with function %s".format(vector, function))
+      case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
+      case gbk@VectorGroupByKey(vector) => emitValDef(sym, "grouping vector by key")
+      case red@VectorReduce(vector, f) => emitValDef(sym, "reducing vector")
+    case _ => super.emitNode(sym, rhs)
+  }
+    println(sym+" "+rhs)
+    out
+    }
+    
+  override def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {
+    val func : Exp[A] => Exp[B] = {x => reifyEffects(f(x))}
+    val x = fresh[A]
+    val y = func(x)
+
+    val sA = mA.toString
+    val sB = mB.toString
+
+    val staticData = getFreeDataBlock(y)
+
+    stream.println("/*****************************************\n"+
+                   "  Emitting Spark Code                  \n"+
+                   "*******************************************/")
+    stream.println("""
+import scala.math.random
+import spark._
+import SparkContext._
+
+object %s {
+        def main(args: Array[String]) {
+    		val sc = new SparkContext(args(0), "%s")
+        """.format(className, className))
+    	
+    // TODO: separate concerns, should not hard code "pxX" name scheme for static data here
+    
+    emitBlock(y)(stream)
+    
+    
+    stream.println("}")
+    
+    stream.println("}")
+    stream.println("/*****************************************\n"+
+                   "  End of Spark Code                  \n"+
+                   "*******************************************/")
+
+    stream.flush
+    
+    staticData
+//    Nil
+  }
+
+    
+}
+
+trait SparkGen extends VectorBaseCodeGenPkg with SparkGenVector
 
 
 object FileOutput {

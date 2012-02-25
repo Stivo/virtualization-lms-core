@@ -16,7 +16,9 @@ import java.io.StringWriter
 import scalax.collection.GraphTraversal.VisitorReturn._
 import scalax.collection.GraphTraversal._
 
-trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil with ScalaGenVector {
+trait HadoopGen extends HadoopCodeGen with VectorBaseCodeGenPkg
+
+trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 	//val IR: dsl.type = dsl
     val IR: VectorOpsExp
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
@@ -70,24 +72,31 @@ trait HadoopGen extends ScalaGenBase with ScalaGenFunctions with ScalaGenUtil wi
 		override def isRead = true
 	}
 	case class Save(override val id : Int) extends Node
-	case class Combine(override val id : Int) extends Node
+	case class Reduce(override val id : Int) extends Node
 	case class Flatten(override val id : Int) extends Node
 	case class Ignore(override val id : Int) extends Node
 	def getNodes(graph : Graph[NodeType,EdgeType], mscrPart : MscrPart) =
 		graph.nodes.map(_.value).filter(_.mscrPart.contains(mscrPart))
 	
-	def getPartnerNode(id : Int, x : Any) = x match {
-		case NewVector(_) => Read(id)
-		case VectorFlatten(_, _) => Flatten(id)
-		case VectorMap(Sym(x), _) => FlatMap(id)
-		case VectorFilter(Sym(x), _) => FlatMap(id)
-		case VectorFlatMap(Sym(x), _) => FlatMap(id)
-		case Reflect(VectorSave(Sym(x), _),_,_) => Save(id)
-		case VectorGroupByKey(Sym(x)) => GroupByKey(id)
-		case VectorReduce(Sym(x), f) => Combine(id)
-		case Reify(Sym(x),_,_) => Save(id)
-		case Reify(_,_,_) => Save(id)
-		case _ => throw new RuntimeException("TODO: Add Partner Node for "+x)
+	def getPartnerNode(id : Int, x : Any) = {
+	  val out = x match {
+			case NewVector(_) => Read(id)
+			case VectorFlatten(_, _) => Flatten(id)
+			case VectorMap(Sym(x), _) => FlatMap(id)
+			case VectorFilter(Sym(x), _) => FlatMap(id)
+			case VectorFlatMap(Sym(x), _) => FlatMap(id)
+			case Reflect(VectorSave(Sym(x), _),_,_) => Save(id)
+			case VectorGroupByKey(Sym(x)) => GroupByKey(id)
+			case VectorReduce(Sym(x), f) => Reduce(id)
+			case Reify(Sym(x),_,_) => Save(id)
+			case Reify(_,_,_) => Save(id)
+			case _ => null
+//			case _ => throw new RuntimeException("TODO: Add Partner Node for "+x)
+		}
+	  if (out != null)
+	    Some(out)
+	  else
+	    None
 	}
 	
 	def getInputs(x : Any) : List[Int] = x match {
@@ -410,19 +419,15 @@ class GraphState {
 	}
 	
 	override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter): Unit = {
-	
-		val op = findDefinition(sym).get.rhs
-		val partnerNode = {
-			if (graphState.map.contains(sym.id))
-				graphState.map(sym.id)
-			else
-				getPartnerNode(sym.id, op)
-		}
-		graphState.map(sym.id) = partnerNode
-		val otherAttributes = getOtherAttributes(op).map( x=> "%s=%s".format(x._1, x._2)).mkString(",")
-		for (x <- getInputs(rhs)) {
-			val node = graphState.map(x)
-			graphState.builder += node ~> partnerNode
+		val op = findDefinition(sym).get.rhs;
+		graphState.map.get(sym.id).orElse(getPartnerNode(sym.id, op))
+		.map{ partnerNode =>
+			graphState.map(sym.id) = partnerNode
+			val otherAttributes = getOtherAttributes(op).map( x=> "%s=%s".format(x._1, x._2)).mkString(",")
+			for (x <- getInputs(rhs)) {
+				val node = graphState.map(x)
+				graphState.builder += node ~> partnerNode
+			}
 		}
 		super.emitNode(sym, rhs)
 	}

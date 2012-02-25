@@ -23,10 +23,13 @@ trait VectorsProg extends VectorImplOps {
   
   def simple(x : Rep[Unit]) = {
     val words1 = Vector("words1")
-    words1.map(_+"asdf")
-    .map(_+"asdf")
+    words1.map(Integer.parseInt(_))
+    .filter(_>4)
+    .map{x => 2*x+3}
+//    .map(_+"asdf")
     .save("words")
-    unit(())
+    unit("348")
+    //unit(())
   }
   
   def wordCount(x: Rep[Unit]) = {
@@ -102,9 +105,14 @@ class TestVectors extends FileDiffSuite {
       val dsl = new VectorsProg with VectorOpsExp with VectorImplOps 
 //      val codegen = new ScalaGenFunctions with ScalaGenUtil with ScalaGenVector with ScalaGenBase { val IR: dsl.type = dsl }
 //      codegen.emitSource(dsl.test, "g", new PrintWriter(System.out))
-      val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
-      codegenDeps.emitSource(dsl.twoStage, "g", new PrintWriter(System.out))
-      val graph = new GraphVizExport { val IR: dsl.type = dsl }
+      val toCompile = dsl.simple _
+      val codegenHadoop = new HadoopGen { val IR: dsl.type = dsl }
+      codegenHadoop.emitSource(toCompile, "Hadoop", new PrintWriter(System.out))
+
+      //      val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
+//      codegenDeps.emitSource(dsl.simple, "g", new PrintWriter(System.out))
+      val codegenSpark = new SparkGen { val IR: dsl.type = dsl }
+      codegenSpark.emitSource(toCompile, "Spark", new PrintWriter(System.out))
 
       println("-- end")
 //    }
