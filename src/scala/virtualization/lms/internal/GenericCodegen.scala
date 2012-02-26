@@ -81,7 +81,7 @@ trait GenericCodegen extends Scheduling {
   def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] // return free static data in block
       
   def quote(x: Exp[Any]) : String = x match {
-    case Const(s: String) => "\""+s+"\""
+    case Const(s: String) => "\""+s.replaceAll("\\\\", "\\\\\\\\").replaceAll("\"", "\\\"")+"\""
     case Const(null) => "null" // why is null getting lifted now? something to do with Equal
     case Const(f: Float) => f.toString + "f"
     case Const(z) => z.toString

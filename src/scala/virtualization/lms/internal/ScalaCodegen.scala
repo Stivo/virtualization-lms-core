@@ -90,7 +90,7 @@ trait ScalaCodegen extends GenericCodegen with Config {
   }
   
   def emitValDef(sym: Sym[Any], rhs: String)(implicit stream: PrintWriter): Unit = {
-    stream.println("val " + quote(sym) + " = " + rhs + (if ((sourceinfo < 2) || sym.pos.isEmpty) "" else {
+    stream.println("val " + quote(sym) + " = " + rhs + ";" + (if ((sourceinfo < 2) || sym.pos.isEmpty) "" else {
       val context = sym.pos(0)
       "      // " + relativePath(context.fileName) + ":" + context.line
     }))

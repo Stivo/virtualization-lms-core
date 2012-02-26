@@ -22,7 +22,8 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 	//val IR: dsl.type = dsl
     val IR: VectorOpsExp
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
-	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce, TypedNode}
+	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce
+	  , ComputationNode}
 	import IR.{findDefinition}
 
 	class MscrPart (var mscr : Mscr = null)
@@ -61,8 +62,8 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 		  case _ => throw new RuntimeException("Did not find symbol "+id)
 		}
 		def getTypes = getOriginal match {
-		  case x : TypedNode => x.getTypes
-		  case Reflect(x:TypedNode,_,_) => x.getTypes
+		  case x : ComputationNode => x.getTypes
+		  case Reflect(x:ComputationNode,_,_) => x.getTypes
 		  case _ => (manifest[Nothing],manifest[Nothing])
 		}
 	}

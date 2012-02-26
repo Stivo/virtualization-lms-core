@@ -76,9 +76,9 @@ trait VectorOps extends VectorBase with Functions {
 
     //operations
     def vector_new[A:Manifest](file : Rep[String]): Rep[Vector[String]]
-    def vector_map[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A => B]) : Rep[Vector[B]]
+    def vector_map[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[B]) : Rep[Vector[B]]
     def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) : Rep[Vector[B]]
-    def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Rep[A => Boolean]) : Rep[Vector[A]]
+    def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Rep[A] => Rep[Boolean]) : Rep[Vector[A]]
     def vector_save[A : Manifest](vector : Rep[Vector[A]], path : Rep[String]) : Rep[Unit]
     def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) : Rep[Vector[A]]
     def vector_reduce[K: Manifest, V : Manifest](vector : Rep[Vector[(K,Iterable[V])]], f : (Rep[V], Rep[V]) => Rep[V] ) : Rep[Vector[(K, V)]]
@@ -86,76 +86,90 @@ trait VectorOps extends VectorBase with Functions {
 }
 
 
-trait VectorOpsExp extends VectorOps with VectorBaseExp with Functions {
+trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
 
   
-	trait TypedNode {
+	trait ClosureNode[A, B] {
+      val in : Exp[Vector[_]]
+	  val func : Exp[A] => Exp[B]
+	  def getClosureTypes : (Manifest[A], Manifest[B])
+	  lazy val closure : Exp[A => B] = VectorOpsExp.this.doLambda(func)(getClosureTypes._1, getClosureTypes._2, SourceContext("unknown", Nil))
+	}
+  
+	trait ComputationNode {
 	  def getTypes : (Manifest[_], Manifest[_])
 	}
-	
-	trait ChangingType extends TypedNode{
-	  this : {val mA : Manifest[_]; val mB : Manifest[_]} =>
-	  def getTypes = (mA, mB)
+  
+	trait ComputationNodeTyped[A, B] extends ComputationNode {
+	  override def getTypes : (Manifest[A], Manifest[B])
 	}
 	
-	trait PreservingType extends TypedNode{
-	  this : {val mA : Manifest[_]} =>
-	  def getTypes = (mA, mA)
+	trait PreservingTypeComputation[A] extends ComputationNodeTyped[A,A]{
+	  def getType : Manifest[A]
+	  def getTypes = (getType, getType)
 	}
 
     case class NewVector[A : Manifest](file : Exp[String]) extends Def[Vector[String]]
-    		with TypedNode {
+    		with ComputationNodeTyped[Nothing, Vector[A]] {
       val mA = manifest[A]
-      def getTypes = (manifest[Nothing], mA)
+      def getTypes = (manifest[Nothing], manifest[Vector[A]])
     }
     
-    case class VectorMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A => B]) //, convert : Exp[Int] => Exp[A])
-       extends Def[Vector[B]] with ChangingType {
-      val mA = manifest[A]
+    case class VectorMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[B]) //, convert : Exp[Int] => Exp[A])
+       extends Def[Vector[B]] with ComputationNodeTyped[Vector[A],Vector[B]] with ClosureNode[A, B]{
+   	  val mA = manifest[A]
       val mB = manifest[B]
+   	  def getClosureTypes = (mA, mB)
+   	  def getTypes = (manifest[Vector[A]], manifest[Vector[B]])
+//      val closure : Exp[A => B] = VectorOpsExp.this.doLambda(func)(mA, manifest[B], SourceContext("unknown", Nil))
     }
 
-    case class VectorFilter[A : Manifest](in : Exp[Vector[A]], func : Exp[A => Boolean])
-       extends Def[Vector[A]] with PreservingType {
+    case class VectorFilter[A : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[Boolean])
+       extends Def[Vector[A]] with PreservingTypeComputation[Vector[A]] with ClosureNode[A, Boolean] {
       val mA = manifest[A]
+      def getClosureTypes = (mA, Manifest.Boolean)
+      def getType = manifest[Vector[A]]
     }
     
     case class VectorFlatMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[Iterable[B]]) //, convert : Exp[Int] => Exp[A])
-       extends Def[Vector[B]] with ChangingType {
+       extends Def[Vector[B]] with ComputationNodeTyped[Vector[A],Vector[B]] {
       val mA = manifest[A]
       val mB = manifest[B]
+      def getTypes = (manifest[Vector[A]], manifest[Vector[B]])
     }
    
     case class VectorFlatten[A : Manifest](v1 : Exp[Vector[A]], v2 : Exp[Vector[A]]) extends Def[Vector[A]] 
-    		with PreservingType {
+    		with PreservingTypeComputation[Vector[A]] {
       val mA = manifest[A]
+      def getType = manifest[Vector[A]]
     }
 
-    case class VectorGroupByKey[K : Manifest, V : Manifest](v1 : Exp[Vector[(K,V)]]) extends Def[Vector[(K, Iterable[V])]] 
-    		with TypedNode{
+    case class VectorGroupByKey[K : Manifest, V : Manifest](v1 : Exp[Vector[(K,V)]]) extends Def[Vector[(K, Iterable[V])]] {
+//    		with TypedNode [(K,V),(K,Iterable[V])]{
       val mKey = manifest[K]
       val mValue = manifest[V]
       val mOutType = manifest[(K,Iterable[V])]
-      def getTypes = (mKey, mOutType)
+//      def getTypes = (manifest[(K,V)], mOutType)
     }
     
     case class VectorReduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V]) 
-    	extends Def[Vector[(K, V)]] with TypedNode{
+    	extends Def[Vector[(K, V)]]{ 
+    //with TypedNode [(K, Iterable[V]),(K,V)]{
       val mKey = manifest[K]
       val mValue = manifest[V]
-      def getTypes = (mKey, mValue)
+//      def getTypes = (mKey, mValue)
     }
     
     case class VectorSave[A : Manifest](vector : Exp[Vector[A]], path : Rep[String]) extends Def[Unit]
-    		with TypedNode{
+    		with ComputationNodeTyped[Vector[A], Nothing]{
     	val mA = manifest[A]
-    	def getTypes = (mA, manifest[Nothing])
+    	def getTypes = (manifest[Vector[A]], manifest[Nothing])
     }
     
     override def vector_new[A: Manifest](file : Exp[String]) = NewVector[A](file)
-    override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A => B]) = VectorMap[A, B](vector, f)
+    override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A] => Exp[B]) = VectorMap[A, B](vector, f)
     override def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) = VectorFlatMap(vector, f)
-    override def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Exp[A => Boolean]) = VectorFilter(vector, f)
+    override def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Exp[A] => Exp[Boolean]) = VectorFilter(vector, f)
     override def vector_save[A : Manifest](vector : Exp[Vector[A]], file : Exp[String]) = reflectEffect(VectorSave[A](vector, file))
     override def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) = VectorFlatten(vector1, vector2)
     override def vector_reduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V] ) = VectorReduce(vector, f)
@@ -223,74 +237,6 @@ trait ScalaGenVector extends ScalaGenBase {
     case _ => super.emitNode(sym, rhs)
   }
 }
-
-trait SparkGenVector extends ScalaGenBase {
-  val IR: VectorOpsExp
-	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
-	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce, TypedNode}
-	import IR.{findDefinition, fresh, reifyEffects, reifyEffectsHere,toAtom}
-	
-  override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter) = 
-    {val out = rhs match {
-      case nv@NewVector(filename) => emitValDef(sym, "sc.textFile(%s)".format(quote(filename)))
-      case vs@VectorSave(vector, filename) => stream.println("%s.saveAsTextFile(%s)".format(quote(vector), quote(filename)))
-      case vm@VectorMap(vector, function) => {emitValDef(sym, "%s.map(%s) // type after %s".format(quote(vector), quote(function), vm.mB))}
-      case vf@VectorFilter(vector, function) => emitValDef(sym, "%s.filter(%s)".format(quote(vector), quote(function)))
-      case vm@VectorFlatMap(vector, function) => emitValDef(sym, "flat mapping vector %s with function %s".format(vector, function))
-      case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
-      case gbk@VectorGroupByKey(vector) => emitValDef(sym, "grouping vector by key")
-      case red@VectorReduce(vector, f) => emitValDef(sym, "reducing vector")
-    case _ => super.emitNode(sym, rhs)
-  }
-    println(sym+" "+rhs)
-    out
-    }
-    
-  override def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {
-    val func : Exp[A] => Exp[B] = {x => reifyEffects(f(x))}
-    val x = fresh[A]
-    val y = func(x)
-
-    val sA = mA.toString
-    val sB = mB.toString
-
-    val staticData = getFreeDataBlock(y)
-
-    stream.println("/*****************************************\n"+
-                   "  Emitting Spark Code                  \n"+
-                   "*******************************************/")
-    stream.println("""
-import scala.math.random
-import spark._
-import SparkContext._
-
-object %s {
-        def main(args: Array[String]) {
-    		val sc = new SparkContext(args(0), "%s")
-        """.format(className, className))
-    	
-    // TODO: separate concerns, should not hard code "pxX" name scheme for static data here
-    
-    emitBlock(y)(stream)
-    
-    
-    stream.println("}")
-    
-    stream.println("}")
-    stream.println("/*****************************************\n"+
-                   "  End of Spark Code                  \n"+
-                   "*******************************************/")
-
-    stream.flush
-    
-    staticData
-//    Nil
-  }
-
-    
-}
-
-trait SparkGen extends VectorBaseCodeGenPkg with SparkGenVector
 
 
 object FileOutput {
