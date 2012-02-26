@@ -27,12 +27,13 @@ trait VectorsProg extends VectorImplOps {
   
   def simple(x : Rep[Unit]) = {
     val words1 = Vector("words1")
-    words1.filter(_.matches("\\d+"))
-    .map(parse)
-    .filter(_>4)
-    .map{x => 2*x+3}
+//    words1.filter(_.matches("\\d+"))
+    val parsed = words1.map(parse)
+//    .filter(_>4)
+    parsed.map{x => 2*x}.save("doubled")
+    parsed.map{x => x+1}.save("incremented")
 //    .map(_+"asdf")
-    .save("words")
+//    .save("words")
     unit("348")
     //unit(())
   }
@@ -114,7 +115,7 @@ class TestVectors extends FileDiffSuite {
       val codegenHadoop = new HadoopGen { val IR: dsl.type = dsl }
       codegenHadoop.emitSource(toCompile, "Hadoop", new PrintWriter(System.out))
 
-      val dslSpark = new VectorsProg with VectorOpsExp with VectorImplOps with SparkVectorOpsExp 
+      val dslSpark = new VectorsProg with VectorOpsExp with VectorImplOps with SparkVectorOpsExp with SparkVectorOpsExpOpt
       //      val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
 //      codegenDeps.emitSource(dsl.simple, "g", new PrintWriter(System.out))
       val codegenSpark = new SparkGen { val IR: dslSpark.type = dslSpark }

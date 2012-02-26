@@ -6,6 +6,17 @@ import scala.virtualization.lms.common.ScalaGenBase
 import java.io.PrintWriter
 
 trait SparkVectorOpsExp extends VectorOpsExp {
+   case class VectorReduceByKey[K: Manifest, V : Manifest](in : Exp[Vector[(K,V)]], func : (Exp[V], Exp[V]) => Exp[V]) 
+    	extends Def[Vector[(K, V)]]{ 
+    //with TypedNode [(K, Iterable[V]),(K,V)]{
+      val mKey = manifest[K]
+      val mValue = manifest[V]
+      lazy val closure = doLambda2(func)(getClosureTypes._2, getClosureTypes._2, getClosureTypes._2, FakeSourceContext())
+      def getClosureTypes = (manifest[(V,V)], manifest[V])
+      
+//      def getTypes = (mKey, mValue)
+    }
+
     override def syms(e: Any): List[Sym[Any]] = e match { 
     case s: ClosureNode[_,_]  => syms(s.in, s.closure) ++ super.syms(e) // super call: add case class syms (iff flag is set)
     case s: VectorReduce[_,_]  => syms(s.in, s.closure) ++ super.syms(e) // super call: add case class syms (iff flag is set)
@@ -30,10 +41,35 @@ trait SparkVectorOpsExp extends VectorOpsExp {
   }
 }
 
+
+trait SparkVectorOpsExpOpt extends SparkVectorOpsExp {
+//  val IR : VectorOpsExp
+//  import IR.{VectorMap}
+//  def compose[A, B, C](f1 : A => B, f2 : B=>C) : A => C = {x : A => f2(f1(x)) }
+
+  override def vector_reduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V] ) = vector match {
+    case Def(VectorGroupByKey(in)) => VectorReduceByKey(in, f)
+    case _ => super.vector_reduce(vector, f)
+  }
+
+   override def syms(e: Any): List[Sym[Any]] = e match {
+     case red : VectorReduceByKey[_,_] => syms(red.in, red.closure)
+    case _ => super.syms(e)
+  }
+      
+  override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
+     case red : VectorReduceByKey[_,_] => freqHot(red.closure) ++ freqNormal(red.in)
+    case _ => super.symsFreq(e)
+  }
+  
+}
+
+
 trait SparkGenVector extends ScalaGenBase {
-  val IR: VectorOpsExp
+  val IR: SparkVectorOpsExp
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce}
+	import IR.{VectorReduceByKey}
 	import IR.{findDefinition, fresh, reifyEffects, reifyEffectsHere,toAtom}
 //	
 //	def emitFunction[A,B](f: Exp[A] => Exp[B], stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]) : String = {
@@ -62,6 +98,7 @@ trait SparkGenVector extends ScalaGenBase {
 //      case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
       case gbk@VectorGroupByKey(vector) => emitValDef(sym, "%s.groupByKey".format(quote(vector)))
       case red@VectorReduce(vector, f) => emitValDef(sym, "%s.map(x => (x._1,x._2.reduce(%s)))".format(quote(vector), quote(red.closure)))
+      case red@VectorReduceByKey(vector, f) => emitValDef(sym, "%s.reduceByKey(%s)".format(quote(vector), quote(red.closure)))
     case _ => super.emitNode(sym, rhs)
   }
     println(sym+" "+rhs)
