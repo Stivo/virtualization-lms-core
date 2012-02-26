@@ -8,6 +8,7 @@ import java.io.PrintWriter
 trait SparkVectorOpsExp extends VectorOpsExp {
     override def syms(e: Any): List[Sym[Any]] = e match { 
     case s: ClosureNode[_,_]  => syms(s.in, s.closure) ++ super.syms(e) // super call: add case class syms (iff flag is set)
+    case s: VectorReduce[_,_]  => syms(s.in, s.closure) ++ super.syms(e) // super call: add case class syms (iff flag is set)
     case _ => super.syms(e)
   }
     
@@ -17,13 +18,14 @@ trait SparkVectorOpsExp extends VectorOpsExp {
   }
   
   override def boundSyms(e: Any): List[Sym[Any]] = e match {
-    case s: ClosureNode[_,_]  => effectSyms(s.closure, s.in) // super call: add case class syms (iff flag is set)
+    case s: ClosureNode[_,_]  => effectSyms(s.closure, s.in) 
     case _ => super.boundSyms(e)
   }
 
   
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
-    case s: ClosureNode[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) // super call: add case class syms (iff flag is set)
+    case s: ClosureNode[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
+    case s: VectorReduce[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
     case _ => super.symsFreq(e)
   }
 }
@@ -56,10 +58,10 @@ trait SparkGenVector extends ScalaGenBase {
       case vs@VectorSave(vector, filename) => stream.println("%s.saveAsTextFile(%s)".format(quote(vector), quote(filename)))
       case vm@VectorMap(vector, function) => emitValDef(sym, "%s.map(%s)".format(quote(vector), quote(vm.closure)))
       case vf@VectorFilter(vector, function) => emitValDef(sym, "%s.filter(%s)".format(quote(vector), quote(vf.closure)))
-      case vm@VectorFlatMap(vector, function) => emitValDef(sym, "flat mapping vector %s with function %s".format(vector, function))
-      case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
-      case gbk@VectorGroupByKey(vector) => emitValDef(sym, "grouping vector by key")
-      case red@VectorReduce(vector, f) => emitValDef(sym, "reducing vector")
+//      case vm@VectorFlatMap(vector, function) => emitValDef(sym, "flat mapping vector %s with function %s".format(vector, function))
+//      case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
+      case gbk@VectorGroupByKey(vector) => emitValDef(sym, "%s.groupByKey".format(quote(vector)))
+      case red@VectorReduce(vector, f) => emitValDef(sym, "%s.map(x => (x._1,x._2.reduce(%s)))".format(quote(vector), quote(red.closure)))
     case _ => super.emitNode(sym, rhs)
   }
     println(sym+" "+rhs)

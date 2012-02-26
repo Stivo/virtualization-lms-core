@@ -85,6 +85,9 @@ trait VectorOps extends VectorBase with Functions {
     def vector_groupByKey[K: Manifest, V : Manifest](vector : Rep[Vector[(K,V)]]) : Rep[Vector[(K, Iterable[V])]]
 }
 
+object FakeSourceContext {
+  def apply() = SourceContext("unknown", Nil)
+}
 
 trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
 
@@ -93,7 +96,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
       val in : Exp[Vector[_]]
 	  val func : Exp[A] => Exp[B]
 	  def getClosureTypes : (Manifest[A], Manifest[B])
-	  lazy val closure : Exp[A => B] = VectorOpsExp.this.doLambda(func)(getClosureTypes._1, getClosureTypes._2, SourceContext("unknown", Nil))
+	  lazy val closure : Exp[A => B] = VectorOpsExp.this.doLambda(func)(getClosureTypes._1, getClosureTypes._2, FakeSourceContext())
 	}
   
 	trait ComputationNode {
@@ -132,10 +135,11 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     }
     
     case class VectorFlatMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[Iterable[B]]) //, convert : Exp[Int] => Exp[A])
-       extends Def[Vector[B]] with ComputationNodeTyped[Vector[A],Vector[B]] {
+       extends Def[Vector[B]] with ComputationNodeTyped[Vector[A],Vector[B]] with ClosureNode[A, Iterable[B]] {
       val mA = manifest[A]
       val mB = manifest[B]
       def getTypes = (manifest[Vector[A]], manifest[Vector[B]])
+      def getClosureTypes = (manifest[A], manifest[Iterable[B]])
     }
    
     case class VectorFlatten[A : Manifest](v1 : Exp[Vector[A]], v2 : Exp[Vector[A]]) extends Def[Vector[A]] 
@@ -152,11 +156,14 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
 //      def getTypes = (manifest[(K,V)], mOutType)
     }
     
-    case class VectorReduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V]) 
+    case class VectorReduce[K: Manifest, V : Manifest](in : Exp[Vector[(K,Iterable[V])]], func : (Exp[V], Exp[V]) => Exp[V]) 
     	extends Def[Vector[(K, V)]]{ 
     //with TypedNode [(K, Iterable[V]),(K,V)]{
       val mKey = manifest[K]
       val mValue = manifest[V]
+      lazy val closure = doLambda2(func)(getClosureTypes._2, getClosureTypes._2, getClosureTypes._2, FakeSourceContext())
+      def getClosureTypes = (manifest[(V,V)], manifest[V])
+      
 //      def getTypes = (mKey, mValue)
     }
     

@@ -21,10 +21,14 @@ trait VectorsProg extends VectorImplOps {
   // How to implement map in terms of flatMap?
   // use ParallelDo instead of flatMap? Has notion of emitter
   
+  def parse( s: Rep[String]) = Integer.parseInt(s)
+  
+  def isNumber(s : Rep[String]) = s.matches("\\d+")
+  
   def simple(x : Rep[Unit]) = {
     val words1 = Vector("words1")
     words1.filter(_.matches("\\d+"))
-    .map(Integer.parseInt)
+    .map(parse)
     .filter(_>4)
     .map{x => 2*x+3}
 //    .map(_+"asdf")
@@ -37,8 +41,8 @@ trait VectorsProg extends VectorImplOps {
     //RandomVector(7) + (ZeroVector(7) + RandomVector(7))
     val words2 = Vector("words1")
     val words1 = Vector("words2")
-    val words = words1++words2
-    val wordsInLine = words.flatMap( _.split(" ").toSeq)
+    val words = words1//++words2
+    val wordsInLine = words//.flatMap( _.split(" ").toSeq)
 //    words.map(_.contains(" ")).save("lines with more than one word")
     val firstWordsInLine = words.map(_.split(" ").apply(0)).save("firstwords")
     val wordsTupled = wordsInLine.map((_, unit(1)))
@@ -114,7 +118,7 @@ class TestVectors extends FileDiffSuite {
       //      val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
 //      codegenDeps.emitSource(dsl.simple, "g", new PrintWriter(System.out))
       val codegenSpark = new SparkGen { val IR: dslSpark.type = dslSpark }
-      codegenSpark.emitSource(dslSpark.simple, "Spark", new PrintWriter(System.out))
+      codegenSpark.emitSource(dslSpark.wordCount, "Spark", new PrintWriter(System.out))
 
       println("-- end")
 //    }
