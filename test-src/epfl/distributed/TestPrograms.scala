@@ -133,13 +133,15 @@ class TestVectors extends FileDiffSuite {
       val dslSpark = new VectorsProg with SparkProgram
       //      val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
 //      codegenDeps.emitSource(dsl.simple, "g", new PrintWriter(System.out))
+      
       val codegenSpark = new SparkGen { val IR: dslSpark.type = dslSpark }
       codegenSpark.emitSource(dslSpark.testFusion, "Spark", printer)
       println(writer.toString)
-      val dest = "/home/stivo/master/spark/examples/src/main/scala/spark/examples/SparkGenerated.scala"
-      val fw = new FileWriter(dest)
-      fw.write(writer.toString)
-      fw.close
+//      val dest = "/home/stivo/master/spark/examples/src/main/scala/spark/examples/SparkGenerated.scala"
+//      val fw = new FileWriter(dest)
+//      fw.write(writer.toString)
+//      fw.close
+      
       println("-- end")
 //    }
 //      FileOutput.finish

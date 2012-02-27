@@ -77,7 +77,8 @@ trait SparkVectorOpsExpOpt extends SparkVectorOpsExp {
 trait SparkGenVector extends ScalaGenBase {
   val IR: SparkVectorOpsExp
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
-	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce}
+	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, 
+	  VectorGroupByKey, VectorReduce, VectorSaves}
 	import IR.{GetArgs}
 	import IR.{VectorReduceByKey}
 	import IR.{findDefinition, fresh, reifyEffects, reifyEffectsHere,toAtom}
@@ -109,6 +110,7 @@ trait SparkGenVector extends ScalaGenBase {
       case gbk@VectorGroupByKey(vector) => emitValDef(sym, "%s.groupByKey".format(quote(vector)))
       case red@VectorReduce(vector, f) => emitValDef(sym, "%s.map(x => (x._1,x._2.reduce(%s)))".format(quote(vector), quote(red.closure)))
       case red@VectorReduceByKey(vector, f) => emitValDef(sym, "%s.reduceByKey(%s)".format(quote(vector), quote(red.closure)))
+      case VectorSaves(saves) => stream.println("// save all vectors") 
       case GetArgs() => emitValDef(sym, "sparkInputArgs.drop(1); // First argument is for spark context")
     case _ => super.emitNode(sym, rhs)
   }

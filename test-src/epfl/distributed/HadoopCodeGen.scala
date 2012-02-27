@@ -23,7 +23,7 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
     val IR: VectorOpsExp
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce
-	  , ComputationNode}
+	  , ComputationNode, VectorSaves}
 	import IR.{findDefinition}
 
 	class MscrPart (var mscr : Mscr = null)
@@ -53,6 +53,7 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 	trait Node {
 		val id : Int
 		var mscrPart = Buffer[MscrPart]()
+		var graphOptions = ""
 		def name = toString//.takeWhile(_!='(')
 		def isRead = false
 		def mscr = mscrPart.head.mscr
@@ -73,6 +74,7 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 		override def isRead = true
 	}
 	case class Save(override val id : Int) extends Node
+	case class AllSave(override val id : Int) extends Node
 	case class Reduce(override val id : Int) extends Node
 	case class Flatten(override val id : Int) extends Node
 	case class Ignore(override val id : Int) extends Node
@@ -87,11 +89,13 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 			case VectorFilter(Sym(x), _) => FlatMap(id)
 			case VectorFlatMap(Sym(x), _) => FlatMap(id)
 			case Reflect(VectorSave(Sym(x), _),_,_) => Save(id)
+			case VectorSave(Sym(x), _) => Save(id)
 			case VectorGroupByKey(Sym(x)) => GroupByKey(id)
 			case VectorReduce(Sym(x), f) => Reduce(id)
 			case Reify(Sym(x),_,_) => Save(id)
 			case Reify(_,_,_) => Save(id)
-			case _ => null
+//			case VectorSaves(_) => AllSave(id)
+			case _ => {println("did not find for "+id+ " "+x); null}
 //			case _ => throw new RuntimeException("TODO: Add Partner Node for "+x)
 		}
 	  if (out != null)
@@ -100,7 +104,8 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 	    None
 	}
 	
-	def getInputs(x : Any) : List[Int] = x match {
+	def getInputs(x : Any) : List[Int] = 
+	  x match {
 		case VectorFlatten(Sym(x1), Sym(x2)) => List(x1, x2)
 		case VectorMap(Sym(x), _) => List(x)
 		case VectorFlatMap(Sym(x), _) => List(x)
@@ -111,6 +116,7 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 		case Reify(_,_,_) => Nil
 		case VectorGroupByKey(Sym(x)) => List(x)
 		case VectorReduce(Sym(x), f) => List(x)
+		case vs@VectorSaves(saves) => vs.ids
 		case _ => Nil
 	}
 	
@@ -236,11 +242,12 @@ class GraphState {
 				}
 
 			def makeEdgeFilter(node : graph.NodeT) = {
-				thisNode : graph.EdgeT => thisNode.from.value match {
-				case x : Any if x == node.value => true
-				case GroupByKey(_) => false
-				case x if x.isInGbkOrReducer => false 
-				case _ => true
+				thisNode : graph.EdgeT =>
+				  thisNode.from.value match {
+					case x : Any if x == node.value => true
+					case GroupByKey(_) => false
+					case x if x.isInGbkOrReducer => false 
+					case _ => true
 				}
 			}
 
@@ -361,8 +368,8 @@ class GraphState {
 				  			" in %s".format(node.mscrPart.mkString(","))
 				  		  else
 				  		    ""
-				sw.write("""%s [label="%s%s"];
-						""".format(node.id, node.name, inStr))
+				sw.write("""%s [label="%s%s",%s];
+""".format(node.id, node.name, inStr, node.graphOptions))
 			}
 			for (mscr <- mscrs) {
 				sw.write("subgraph cluster%s {\n".format(i))
@@ -413,24 +420,41 @@ class GraphState {
 	
 	
 	override def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {
-		GraphState.set(null)
 		val out = super.emitSource(f, className, stream)
-		FileOutput.writeln(graphState.export)
-		graphState.writeTypes
-		out
+	  val defs = IR.globalDefs
+	  val leftDefs = defs.flatMap{x => x.rhs match {case Reflect(vs@VectorSave(_,_),_,_) => Some((x.sym,vs)) case _ => None}}
+      val savesSym = IR.fresh[VectorSaves](Nil)
+      val saves = VectorSaves(leftDefs.map(_._2))
+      saves.ids = leftDefs.map(_._1.id)
+	  IR.createDefinition(savesSym, saves)
+      GraphState.set(null)
+	  buildGraph(IR.globalDefs)
+	  FileOutput.writeln(graphState.export)
+	  graphState.writeTypes
+	  out
 	}
 	
-	override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter): Unit = {
+	def buildGraph(defs : List[IR.TP[_]]){
+	  for (tp <- defs) {
+	    updateGraph(tp.sym, tp.rhs)
+	  }
+	}
+	
+	def updateGraph(sym: Sym[Any], rhs: Def[Any]): Unit = {
 		val op = findDefinition(sym).get.rhs;
 		graphState.map.get(sym.id).orElse(getPartnerNode(sym.id, op))
 		.map{ partnerNode =>
 			graphState.map(sym.id) = partnerNode
 			val otherAttributes = getOtherAttributes(op).map( x=> "%s=%s".format(x._1, x._2)).mkString(",")
+			partnerNode.graphOptions = otherAttributes
 			for (x <- getInputs(rhs)) {
 				val node = graphState.map(x)
 				graphState.builder += node ~> partnerNode
 			}
 		}
+	}
+
+	override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter): Unit = {
 		super.emitNode(sym, rhs)
 	}
 

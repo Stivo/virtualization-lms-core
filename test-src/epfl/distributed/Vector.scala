@@ -15,6 +15,7 @@ import java.io.File
 import java.io.FileWriter
 import java.io.StringWriter
 import scala.reflect.SourceContext
+import scala.collection.mutable.Buffer
 
 trait Vector[A] {
   //val elementType = manifest[A]
@@ -176,6 +177,10 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     	def getTypes = (manifest[Vector[A]], manifest[Nothing])
     }
     
+    case class VectorSaves(val saves : List[VectorSave[_]]) extends Def[Unit] {
+      var ids = List[Int]()
+    }
+    
     case class GetArgs extends Def[Array[String]]
     
     override def get_args() = GetArgs()
@@ -183,7 +188,10 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A] => Exp[B]) = VectorMap[A, B](vector, f)
     override def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) = VectorFlatMap(vector, f)
     override def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Exp[A] => Exp[Boolean]) = VectorFilter(vector, f)
-    override def vector_save[A : Manifest](vector : Exp[Vector[A]], file : Exp[String]) = reflectEffect(VectorSave[A](vector, file))
+    override def vector_save[A : Manifest](vector : Exp[Vector[A]], file : Exp[String]) = {
+      val save = VectorSave[A](vector, file)
+        reflectEffect(save)
+    }
     override def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) = VectorFlatten(vector1, vector2)
     override def vector_reduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V] ) = VectorReduce(vector, f)
     override def vector_groupByKey[K: Manifest, V : Manifest](vector : Exp[Vector[(K,V)]]) = VectorGroupByKey(vector)
@@ -204,24 +212,30 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
   override def syms(e: Any): List[Sym[Any]] = e match { //TR TODO: question -- is alloc a dependency (should be part of result) or a definition (should not)???
                                                         // aks: answer -- we changed it to be internal to the op to make things easier for CUDA. not sure if that still needs
                                                         // to be the case. similar question arises for sync
+    case VectorSaves(saves) => syms(saves)
     case NewVector(arg) => syms(arg)
+    case VectorSave(vec, path) => syms(vec, path)
     case s: VectorMap[_,_]  => syms(s.func, s.in) ++ super.syms(e) // super call: add case class syms (iff flag is set)
     case _ => super.syms(e)
   }
     
    override def readSyms(e: Any): List[Sym[Any]] = e match { //TR FIXME: check this is actually correct
+//    case VectorSaves => syms(VectorSaves.saves)
     case s: VectorMap[_,_]  => syms(s.func, s.in) ++ super.syms(e) // super call: add case class syms (iff flag is set)
     case _ => super.readSyms(e)
   }
   
   override def boundSyms(e: Any): List[Sym[Any]] = e match {
+//    case VectorSaves => syms(VectorSaves.saves)
     case s: VectorMap[_,_]  => effectSyms(s.func, s.in)
     case _ => super.boundSyms(e)
   }
 
   
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
+    case VectorSaves(saves) => freqNormal(saves)
     case NewVector(arg) => freqNormal(arg)
+    case VectorSave(vec, path) => freqNormal(vec, path)
     case s: VectorMap[_,_]  => freqHot(s.func)++freqNormal(s.in)
     case _ => super.symsFreq(e)
   }
@@ -249,6 +263,7 @@ trait ScalaGenVector extends ScalaGenBase {
       case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
       case gbk@VectorGroupByKey(vector) => emitValDef(sym, "grouping vector by key")
       case red@VectorReduce(vector, f) => emitValDef(sym, "reducing vector")
+//      case VectorSaves => stream.println("// saving all the vectors")
       case GetArgs() => emitValDef(sym, "getting the arguments")
     case _ => super.emitNode(sym, rhs)
   }

@@ -77,7 +77,7 @@ trait PrimitiveOps extends Variables with OverloadHack {
   }
 
   def infix_/(lhs: Rep[Int], rhs: Rep[Int])(implicit ctx: SourceContext) = int_divide(lhs, rhs)
-  def infix_%(lhs: Rep[Int], rhs: Rep[Int])(implicit ctx: SourceContext) = int_mod(lhs, rhs)
+  def infix_%(lhs: Rep[Int], rhs: Rep[Int])(implicit o: Overloaded1, ctx: SourceContext) = int_mod(lhs, rhs)
   def infix_&(lhs: Rep[Int], rhs: Rep[Int])(implicit ctx: SourceContext) = int_binaryand(lhs, rhs)
   def infix_|(lhs: Rep[Int], rhs: Rep[Int])(implicit ctx: SourceContext) = int_binaryor(lhs, rhs)
   def infix_^(lhs: Rep[Int], rhs: Rep[Int])(implicit ctx: SourceContext) = int_binaryxor(lhs, rhs)
