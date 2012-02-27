@@ -5,6 +5,10 @@ package distributed
 import scala.virtualization.lms.common.ScalaGenBase
 import java.io.PrintWriter
 
+trait SparkProgram extends VectorOpsExp with VectorImplOps with SparkVectorOpsExp with SparkVectorOpsExpOpt {
+  
+}
+
 trait SparkVectorOpsExp extends VectorOpsExp {
    case class VectorReduceByKey[K: Manifest, V : Manifest](in : Exp[Vector[(K,V)]], func : (Exp[V], Exp[V]) => Exp[V]) 
     	extends Def[Vector[(K, V)]]{ 
@@ -52,6 +56,11 @@ trait SparkVectorOpsExpOpt extends SparkVectorOpsExp {
     case _ => super.vector_reduce(vector, f)
   }
 
+//  override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A] => Exp[B]) = vector match {
+//	case Def(vm@VectorMap(in, f2)) => VectorMap(in, f2.andThen(f))(manifest[Any],manifest[B])
+//	case _ => super.vector_map(vector, f)
+//  }
+  
    override def syms(e: Any): List[Sym[Any]] = e match {
      case red : VectorReduceByKey[_,_] => syms(red.in, red.closure)
     case _ => super.syms(e)
@@ -69,6 +78,7 @@ trait SparkGenVector extends ScalaGenBase {
   val IR: SparkVectorOpsExp
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce}
+	import IR.{GetArgs}
 	import IR.{VectorReduceByKey}
 	import IR.{findDefinition, fresh, reifyEffects, reifyEffectsHere,toAtom}
 //	
@@ -94,11 +104,12 @@ trait SparkGenVector extends ScalaGenBase {
       case vs@VectorSave(vector, filename) => stream.println("%s.saveAsTextFile(%s)".format(quote(vector), quote(filename)))
       case vm@VectorMap(vector, function) => emitValDef(sym, "%s.map(%s)".format(quote(vector), quote(vm.closure)))
       case vf@VectorFilter(vector, function) => emitValDef(sym, "%s.filter(%s)".format(quote(vector), quote(vf.closure)))
-//      case vm@VectorFlatMap(vector, function) => emitValDef(sym, "flat mapping vector %s with function %s".format(vector, function))
+      case vm@VectorFlatMap(vector, function) => emitValDef(sym, "%s.flatMap(%s)".format(quote(vector), quote(vm.closure)))
 //      case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
       case gbk@VectorGroupByKey(vector) => emitValDef(sym, "%s.groupByKey".format(quote(vector)))
       case red@VectorReduce(vector, f) => emitValDef(sym, "%s.map(x => (x._1,x._2.reduce(%s)))".format(quote(vector), quote(red.closure)))
       case red@VectorReduceByKey(vector, f) => emitValDef(sym, "%s.reduceByKey(%s)".format(quote(vector), quote(red.closure)))
+      case GetArgs() => emitValDef(sym, "sparkInputArgs.drop(1); // First argument is for spark context")
     case _ => super.emitNode(sym, rhs)
   }
     println(sym+" "+rhs)
@@ -120,13 +131,14 @@ trait SparkGenVector extends ScalaGenBase {
                    "  Emitting Spark Code                  \n"+
                    "*******************************************/")
     stream.println("""
+package spark.examples;
 import scala.math.random
 import spark._
 import SparkContext._
 
 object %s {
-        def main(args: Array[String]) {
-    		val sc = new SparkContext(args(0), "%s")
+        def main(sparkInputArgs: Array[String]) {
+    		val sc = new SparkContext(sparkInputArgs(0), "%s")
         """.format(className, className))
     	
     // TODO: separate concerns, should not hard code "pxX" name scheme for static data here

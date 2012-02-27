@@ -1,0 +1,139 @@
+---------- Program: simple word count, can hoist 2 regex patterns out of the loop
+
+2 mio lines, 2gb of ram
+1 core, spark first
+real	0m13.260s
+user	0m17.541s
+sys	0m0.676s
+
+real	0m12.564s
+user	0m17.673s
+sys	0m0.624s
+
+2 cores, spark first
+real	0m10.283s
+user	0m22.861s
+sys	0m0.620s
+
+real	0m8.976s
+user	0m19.489s
+sys	0m0.640s
+
+4 cores, spark first
+real	0m9.913s
+user	0m25.806s
+sys	0m0.900s
+
+real	0m8.712s
+user	0m23.469s
+sys	0m0.716s
+
+6.7 mio lines, 4gb ram limit
+1 core
+real	0m33.644s
+user	0m40.363s
+sys	0m1.432s
+
+real	0m30.053s
+user	0m35.362s
+sys	0m1.332s
+
+2 cores
+real	0m21.275s
+user	0m47.251s
+sys	0m1.728s
+
+real	0m18.362s
+user	0m40.339s
+sys	0m1.324s
+
+4 cores
+real	0m19.766s
+user	1m7.212s
+sys	0m2.068s
+
+real	0m17.529s
+user	0m59.332s
+sys	0m2.072s
+
+4 cores, pattern not hoisted:
+real	0m19.867s
+user	1m6.912s
+sys	0m2.144s
+
+real	0m19.765s
+user	1m6.840s
+sys	0m2.012s
+
+Fusion test, 3 maps fused
+4 cores
+real	0m7.668s
+user	0m24.070s
+sys	0m0.876s
+
+real	0m7.886s
+user	0m24.478s
+sys	0m0.944s
+
+1 core
+real	0m13.254s
+user	0m14.833s
+sys	0m0.692s
+
+real	0m13.300s
+user	0m14.865s
+sys	0m0.592s
+
+
+
+
+
+
+############### OLD ###################
+
+2 mio lines, original code, 1 core
+real	0m14.325s
+user	0m19.657s
+sys	0m0.792s
+
+2 cores
+real	0m11.256s
+user	0m24.250s
+sys	0m0.908s
+
+4 cores
+real	0m10.221s
+user	0m28.454s
+sys	0m0.876s
+
+original code, using reduce instead of mapping and aggregating:
+real	0m14.256s
+user	0m19.345s
+sys	0m0.764s
+
+2 cores
+real	0m10.741s
+user	0m23.221s
+sys	0m0.904s
+
+4 cores
+real	0m10.114s
+user	0m27.658s
+sys	0m0.840s
+
+
+generated code, 1 core
+real	0m13.166s
+user	0m18.421s
+sys	0m0.600s
+
+2 cores
+real	0m9.621s
+user	0m21.081s
+sys	0m0.800s
+
+4 cores
+real	0m9.509s
+user	0m26.874s
+sys	0m0.856s
+

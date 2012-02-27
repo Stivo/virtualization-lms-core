@@ -22,13 +22,12 @@ trait Vector[A] {
 
 }
 
-
-
 trait VectorBase extends Base with LiftAll
   with Equal with IfThenElse with Variables with While with Functions
   with ImplicitOps with NumericOps with OrderingOps with StringOps
   with BooleanOps with PrimitiveOps with MiscOps with TupleOps
   with MathOps with CastingOps with ObjectOps with ArrayOps
+  with StringAndNumberOps
 
 trait VectorBaseExp extends VectorBase
   with DSLOpsExp
@@ -37,7 +36,7 @@ trait VectorBaseExp extends VectorBase
   with BooleanOpsExp with PrimitiveOpsExp with MiscOpsExp with TupleOpsExp
   with MathOpsExp with CastingOpsExp with ObjectOpsExp with ArrayOpsExp with RangeOpsExp
   with StructExp
-
+  with StringAndNumberOpsExp
 //trait VectorBaseCodeGenPkg extends ScalaGen
   
 trait VectorBaseCodeGenPkg extends ScalaGenDSLOps
@@ -46,14 +45,16 @@ trait VectorBaseCodeGenPkg extends ScalaGenDSLOps
   with ScalaGenBooleanOps with ScalaGenPrimitiveOps with ScalaGenMiscOps with ScalaGenTupleOps
   with ScalaGenMathOps with ScalaGenCastingOps with ScalaGenObjectOps with ScalaGenArrayOps with ScalaGenRangeOps
   with ScalaGenStruct
+  with StringAndNumberOpsCodeGen
   { val IR: VectorOpsExp }
 
 
-trait VectorOps extends VectorBase with Functions {
+trait VectorOps extends VectorBase {
   //this: SimpleVector =>
 	//syntax
     object Vector {
       def apply(file : Rep[String]) = vector_new[String](file)
+      def getArgs = get_args()
     }
     implicit def repVecToVecOps[A:Manifest](vector: Rep[Vector[A]]) = new vecOpsCls(vector)
     implicit def repVecToVecIterableTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,Iterable[V])]]) = new vecIterableTupleOpsCls(x)
@@ -74,6 +75,8 @@ trait VectorOps extends VectorBase with Functions {
       def groupByKey = vector_groupByKey[K, V](x)
     }
 
+   def get_args() : Rep[Array[String]]
+   
     //operations
     def vector_new[A:Manifest](file : Rep[String]): Rep[Vector[String]]
     def vector_map[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[B]) : Rep[Vector[B]]
@@ -173,6 +176,9 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     	def getTypes = (manifest[Vector[A]], manifest[Nothing])
     }
     
+    case class GetArgs extends Def[Array[String]]
+    
+    override def get_args() = GetArgs()
     override def vector_new[A: Manifest](file : Exp[String]) = NewVector[A](file)
     override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A] => Exp[B]) = VectorMap[A, B](vector, f)
     override def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) = VectorFlatMap(vector, f)
@@ -198,6 +204,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
   override def syms(e: Any): List[Sym[Any]] = e match { //TR TODO: question -- is alloc a dependency (should be part of result) or a definition (should not)???
                                                         // aks: answer -- we changed it to be internal to the op to make things easier for CUDA. not sure if that still needs
                                                         // to be the case. similar question arises for sync
+    case NewVector(arg) => syms(arg)
     case s: VectorMap[_,_]  => syms(s.func, s.in) ++ super.syms(e) // super call: add case class syms (iff flag is set)
     case _ => super.syms(e)
   }
@@ -214,6 +221,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
 
   
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
+    case NewVector(arg) => freqNormal(arg)
     case s: VectorMap[_,_]  => freqHot(s.func)++freqNormal(s.in)
     case _ => super.symsFreq(e)
   }
@@ -241,6 +249,7 @@ trait ScalaGenVector extends ScalaGenBase {
       case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
       case gbk@VectorGroupByKey(vector) => emitValDef(sym, "grouping vector by key")
       case red@VectorReduce(vector, f) => emitValDef(sym, "reducing vector")
+      case GetArgs() => emitValDef(sym, "getting the arguments")
     case _ => super.emitNode(sym, rhs)
   }
 }

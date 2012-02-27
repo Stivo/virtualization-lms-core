@@ -106,6 +106,7 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 		case VectorFlatMap(Sym(x), _) => List(x)
 		case VectorFilter(Sym(x), _) => List(x)
 		case Reflect(VectorSave(Sym(x), _),_,_) => List(x)
+		case VectorSave(Sym(x), _) => List(x)
 		case Reify(Sym(x),_,_) => List(x)
 		case Reify(_,_,_) => Nil
 		case VectorGroupByKey(Sym(x)) => List(x)
@@ -390,7 +391,7 @@ class GraphState {
 		  val nodes = graph.nodes.map{x : { def value : Node } => x.value}.toList
 		  for (node <- nodes.sortBy(_.id)) {
 		    System.out.println(node.getOriginal)
-		    System.out.println(node.getTypes)
+		    //System.out.println(node)
 		  }
 		}
 	

@@ -39,39 +39,43 @@ trait VectorsProg extends VectorImplOps {
   }
   
   def wordCount(x: Rep[Unit]) = {
-    //RandomVector(7) + (ZeroVector(7) + RandomVector(7))
-    val words2 = Vector("words1")
-    val words1 = Vector("words2")
-    val words = words1//++words2
-    val wordsInLine = words//.flatMap( _.split(" ").toSeq)
+    val args = Vector.getArgs
+	val output = args(1)
+	val lines = Vector(args(0))
+    val wordsInLine = lines.map( _.split("\\s+").apply(1)).flatMap(_.split("[:/_.,]").toSeq)
 //    words.map(_.contains(" ")).save("lines with more than one word")
-    val firstWordsInLine = words.map(_.split(" ").apply(0)).save("firstwords")
     val wordsTupled = wordsInLine.map((_, unit(1)))
-    val wordsGrouped = wordsTupled.groupByKey
-    wordsGrouped.reduce(_+_).save("counts")
-    val distinct = wordsGrouped.reduce((x,y) => x).map(_._1)
-    distinct.save("distinct")
-    val logEntries = Vector("logs")
-    logEntries.save("asdf")
-//    wordsTupled.save("wordsTupled")
-    unit(())
+    val counted = wordsTupled.groupByKey.reduce(_+_).filter(_._2 > 10)
+    counted.save(output+"/wordcounts")
+    val inverted = counted.map(x => (x._2,x._1))
+//    val reduced = inverted.reduce((x,y) => if (x._1 > y._1) x else y)
+//    println(reduced)
+    val invertedSameKey = inverted.map(x => (unit(0), x))
+    invertedSameKey.groupByKey.reduce((x,y) => if (x._1 > y._1) x else y)
+    .map(_._2)
+    .save(output+"/most common word")
   }
   
    def twoStage(x: Rep[Unit]) = {
     //RandomVector(7) + (ZeroVector(7) + RandomVector(7))
     val words = Vector("words2")
-    val wordsInLine = words.flatMap( _.split(" ").toSeq)
+    val wordsInLine = words//.flatMap( _.split(" ").toSeq)
 //    words.map(_.contains(" ")).save("lines with more than one word")
     val wordsTupled = wordsInLine.map((_, unit(1)))
     val wordsGrouped = wordsTupled.groupByKey
     val counted = wordsGrouped.reduce(_+_)
+    counted.save("wordcounts")
     val inverted = counted.map(x => (x._2,x._1))
-    inverted.map(x => (unit(0), x)).groupByKey.reduce((x,y) => if (x._1 > y._1) x else y).save("asdf")
-    val invertedGrouped = inverted.groupByKey
+    inverted.map(x => (unit(0), x))
+    .groupByKey
+    .reduce((x,y) => if (x._1 > y._1) x else y)
+    .map(_._2)
+    .save("most common word")
+//    val invertedGrouped = inverted.groupByKey
 //    val invertedGrouped2 = Vector[(Int, String)]("Asdf").groupByKey
     
 //    val added = invertedGrouped++invertedGrouped2
-    invertedGrouped
+//    invertedGrouped
 //    invertedGrouped.save("inverted")
   }
 
@@ -81,11 +85,18 @@ trait VectorsProg extends VectorImplOps {
   }
   
   def logAnalysis(x : Rep[Unit]) = {
-    val inputPath = "asf"
-    val lines = Vector(inputPath)
+    val args = Vector.getArgs
+    val lines = Vector(args(0))
     val years = lines.flatMap(_.split(" ").toSeq).flatMap(_.split("/").toSeq)
 		.filter(_.matches("18\\d{2}"))
-	years.save("years")
+	years.save(args(1))
+	unit(())
+  }
+  def testFusion(x : Rep[Unit]) = {
+    val args = Vector.getArgs
+    val lines = Vector(args(0))
+    val years = lines.map{y => val x = y.split("\\s+");x(x.length-1)}.map(Integer.parseInt).map(_%7 == 1)
+	years.save(args(1))
 	unit(())
   }
   def trends(x : Rep[Unit]) = {
@@ -108,19 +119,27 @@ class TestVectors extends FileDiffSuite {
     try {
       println("-- begin")
 
-      val dsl = new VectorsProg with VectorOpsExp with VectorImplOps 
+      val dsl = new VectorsProg with VectorOpsExp 
 //      val codegen = new ScalaGenFunctions with ScalaGenUtil with ScalaGenVector with ScalaGenBase { val IR: dsl.type = dsl }
 //      codegen.emitSource(dsl.test, "g", new PrintWriter(System.out))
-      val toCompile = dsl.simple _
+      val toCompile = dsl.twoStage _
       val codegenHadoop = new HadoopGen { val IR: dsl.type = dsl }
       codegenHadoop.emitSource(toCompile, "Hadoop", new PrintWriter(System.out))
 
-      val dslSpark = new VectorsProg with VectorOpsExp with VectorImplOps with SparkVectorOpsExp with SparkVectorOpsExpOpt
+      
+      val writer = new StringWriter()
+      val printer = new PrintWriter(writer)
+      
+      val dslSpark = new VectorsProg with SparkProgram
       //      val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
 //      codegenDeps.emitSource(dsl.simple, "g", new PrintWriter(System.out))
       val codegenSpark = new SparkGen { val IR: dslSpark.type = dslSpark }
-      codegenSpark.emitSource(dslSpark.wordCount, "Spark", new PrintWriter(System.out))
-
+      codegenSpark.emitSource(dslSpark.testFusion, "Spark", printer)
+      println(writer.toString)
+      val dest = "/home/stivo/master/spark/examples/src/main/scala/spark/examples/SparkGenerated.scala"
+      val fw = new FileWriter(dest)
+      fw.write(writer.toString)
+      fw.close
       println("-- end")
 //    }
 //      FileOutput.finish
