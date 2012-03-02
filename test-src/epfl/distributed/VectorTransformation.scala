@@ -25,7 +25,7 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 		def getTodo = toDo.toSet
 	}
 	
-	class Transformer(var currentState : TransformationState, val transformations : List[Transformation]) {
+	class Transformer(var currentState : TransformationState, var transformations : List[Transformation]) {
 	  def doOneStep = {
 	    currentState.printAll
 	    var out = false
@@ -53,10 +53,12 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 		  }
 		  after
 		}
-			
+	
 		def readingNodes (inExp : Def[_])= {
-		  val reading = IR.syms(inExp)
-		  reading.flatMap{ x=> IR.findDefinition(x)}.map(_.rhs)
+		  val reading = IR.syms(inExp).removeDuplicates
+		  val out = reading.flatMap{ x=> IR.findDefinition(x)}.map(_.rhs)
+//		  println("Reading nodes of "+inExp+" are "+reading+", with Defs "+out)
+		  out
 		}
 		def getConsumers (inExp : Exp[_]) = {
 		  val inSym = inExp.asInstanceOf[Sym[_]]
@@ -88,7 +90,13 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 		  // get dependencies
 		  val readers = transformer.readingNodes(out)
 		  // find all new Defs
-		  val newDefs = List(out)++readers
+		  var newDefs = List(out)++readers
+//		  newDefs = newDefs.flatMap(x => transformer.readingNodes(x)++List(x))
+//		  newDefs = newDefs.flatMap(transformer.readingNodes)
+//		  newDefs = newDefs.flatMap(transformer.readingNodes)
+		  newDefs = newDefs.removeDuplicates
+		  println(" the new newDefs")
+		  println(newDefs)
 		  // make TTP's from defs
 		  val ttps = newDefs.map(IR.findOrCreateDefinition(_,Nil)).map(fatten)
 		  // return ttps and substitutions

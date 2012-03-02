@@ -22,24 +22,27 @@ trait SparkVectorOpsExp extends VectorOpsExp {
     }
 
     override def syms(e: Any): List[Sym[Any]] = e match { 
-    case s: ClosureNode[_,_]  => syms(s.in, s.closure) ++ super.syms(e) // super call: add case class syms (iff flag is set)
+    case s: ClosureNode[_,_] if s.declareClosureAsSym => syms(s.in, s.closure)// ++ super.syms(e) // super call: add case class syms (iff flag is set)
+    case s: ClosureNode[_,_] => syms(s.in)// ++ super.syms(e) // super call: add case class syms (iff flag is set)
     case s: VectorReduce[_,_]  => syms(s.in, s.closure) ++ super.syms(e) // super call: add case class syms (iff flag is set)
     case _ => super.syms(e)
   }
     
-   override def readSyms(e: Any): List[Sym[Any]] = e match { //TR FIXME: check this is actually correct
-    case s: ClosureNode[_,_]  => syms(s.closure, s.in) ++ super.syms(e)// super call: add case class syms (iff flag is set)
-    case _ => super.readSyms(e)
-  }
-  
-  override def boundSyms(e: Any): List[Sym[Any]] = e match {
-    case s: ClosureNode[_,_]  => effectSyms(s.closure, s.in) 
-    case _ => super.boundSyms(e)
-  }
+//   override def readSyms(e: Any): List[Sym[Any]] = e match { //TR FIXME: check this is actually correct
+//    case s: ClosureNode[_,_]  => syms(s.closure, s.in) ++ super.syms(e)// super call: add case class syms (iff flag is set)
+//    case _ => super.readSyms(e)
+//  }
+//  
+//  override def boundSyms(e: Any): List[Sym[Any]] = e match {
+//    case s: ClosureNode[_,_]  => effectSyms(s.closure, s.in) 
+//    case _ => super.boundSyms(e)
+//  }
 
   
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
-    case s: ClosureNode[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
+    case s: ClosureNode[_,_] if s.declareClosureAsSym => freqNormal(s.in)++freqHot(s.closure) 
+    case s: ClosureNode[_,_] => freqNormal(s.in) 
+//    case s: ClosureNode[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
     case s: VectorReduce[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
     case _ => super.symsFreq(e)
   }
@@ -88,21 +91,34 @@ trait SparkTransformations extends VectorTransformations {
 	   }
 	}
 
-  	class MapMergeTransformation extends Transformation {
-
-  	   def appliesToNode(inExp : Exp[_], t : Transformer) = inExp match {
-        case Def(red@VectorMap(d@Def(gbk@VectorMap(v1, f2)),f1)) if (t.getConsumers(d).size==1) => true
-        case _ => false
-  	   }
+  	class MapMergeTransformation extends SimpleSingleConsumerTransformation {
   	  
-	   def doTransformation(inExp : Exp[_]) = inExp match {
+	   def doTransformationPure(inExp : Exp[_]) = inExp match {
             case Def(red@VectorMap(Def(gbk@VectorMap(v1, f2)),f1)) => {
-              VectorMap(v1, f2.andThen(f1))
+              VectorMap(v1, f2.andThen(f1))(gbk.mA,red.mB)
             }
             case _ => null
 	   }
 	}
   	
+  	class MakeClosuresTransformation extends Transformation {
+
+ 	   def appliesToNode(inExp : Exp[_], t : Transformer) = {
+	     inExp match {
+	       case Def(s : IR.ClosureNode[_,_]) => true
+	       case s : IR.Sym[_] if IR.findDefinition(s).isDefined => true
+	       case Def(VectorReduceByKey(in, func)) => true
+	       case _ => false
+	     }
+	   }
+ 	   def doTransformation(inExp : Exp[_]) : Def[_] = inExp match {
+ 	     case Def(s : IR.ClosureNode[_,_]) => s.declareClosureAsSym = true; s
+ 	     case s : IR.Sym[_] if IR.findDefinition(s).isDefined => IR.findDefinition(s).get.rhs
+	     case Def(r@VectorReduceByKey(in, func)) => r
+ 	     case _ => null
+ 	   }
+	}
+
 }
 
 trait SparkGenVector extends ScalaGenBase with ScalaGenVector with SparkTransformations {
@@ -119,36 +135,7 @@ trait SparkGenVector extends ScalaGenBase with ScalaGenVector with SparkTransfor
 	import IR.{GetArgs}
 	import IR.{VectorReduceByKey}
 	import IR.{findDefinition, fresh, reifyEffects, reifyEffectsHere,toAtom}
-//	
-//	def emitFunction[A,B](f: Exp[A] => Exp[B], stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]) : String = {
-//	  val sc = SourceContext("test",Nil)
-//	  val y = fresh[A]
-////	  val applied = IR.doApply(IR.doLambda(f), y).asInstanceOf[Sym[B]]
-//	  val closure = IR.doLambda(f)(mA, mB, sc).asInstanceOf[Sym[A=>B]]
-////	  println(closure.Type)
-////	  val def_ = IR.findDefinition(applied)//(stream)
-////	  emitNode(applied, def_.get.rhs)(stream)
-//	  val def_ = IR.findDefinition(closure)//(stream)
-//	  emitNode(closure, def_.get.rhs)(stream)
-//	  println(def_.get.rhs)
-//	  quote(closure)
-////	  stream.println(closure)
-////	  quote(applied)
-//	}
-	
-	def emitFunction[A : Manifest, B : Manifest](f : Exp[A] => Exp[B])(implicit stream: PrintWriter) {
-	      val x = fresh[A]
-	      val y = reifyEffects(f(x)) // unfold completely at the definition site. 
-                               // TODO: this will not work if f is recursive. 
-                               // need to incorporate the other pieces at some point.
-     stream.println("val ffff  = {" + quote(x) + ": (" + x.Type + ") => ")
-      emitBlock(y)
-      stream.println(quote(getBlockResult(y)) + ": " + y.Type)
-      stream.println("}")
-
-//	  emitBlock(f)
-	}
-	
+		
   override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter) = 
     {val out = rhs match {
       case nv@NewVector(filename) => emitValDef(sym, "sc.textFile(%s)".format(quote(filename)))
@@ -172,6 +159,14 @@ trait SparkGenVector extends ScalaGenBase with ScalaGenVector with SparkTransfor
     val state = new TransformationState(currentScope0, result0)
     val transformer = new Transformer(state, List(new ReduceByKeyTransformation(), new MapMergeTransformation()))
 //    buildGraph(transformer)
+    transformer.doOneStep
+    transformer.doOneStep
+    System.err.println("Now starting to create closures")
+    transformer.transformations = List(new MakeClosuresTransformation())
+    transformer.doOneStep
+    transformer.doOneStep
+    transformer.doOneStep
+    transformer.doOneStep
     transformer.doOneStep
 //    buildGraph(transformer)
 //    transformer.doOneStep

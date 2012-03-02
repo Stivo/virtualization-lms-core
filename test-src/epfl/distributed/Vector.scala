@@ -112,10 +112,16 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
   }
   
 	trait ClosureNode[A, B] extends IRNode {
+	  var declareClosureAsSym = false
       val in : Exp[Vector[_]]
 	  val func : Exp[A] => Exp[B]
 	  def getClosureTypes : (Manifest[A], Manifest[B])
-	  lazy val closure : Exp[A => B] = VectorOpsExp.this.doLambda(func)(getClosureTypes._1, getClosureTypes._2, FakeSourceContext())
+	  
+	  lazy val closure = {
+        System.err.println("           Creating a closure for "+this)
+        VectorOpsExp.this.doLambda(func)(getClosureTypes._1, getClosureTypes._2, FakeSourceContext()) 
+      }
+
 	}
   
 	trait ComputationNode {
