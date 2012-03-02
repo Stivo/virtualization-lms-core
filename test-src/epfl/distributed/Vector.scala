@@ -36,16 +36,17 @@ trait VectorBaseExp extends VectorBase
   with ImplicitOpsExp with NumericOpsExp with OrderingOpsExp with StringOpsExp
   with BooleanOpsExp with PrimitiveOpsExp with MiscOpsExp with TupleOpsExp
   with MathOpsExp with CastingOpsExp with ObjectOpsExp with ArrayOpsExp with RangeOpsExp
-  with StructExp
+  with StructExp with FatExpressions with LoopsFatExp with IfThenElseFatExp
   with StringAndNumberOpsExp
 //trait VectorBaseCodeGenPkg extends ScalaGen
   
 trait VectorBaseCodeGenPkg extends ScalaGenDSLOps
+  with SimplifyTransform
   with ScalaGenEqual with ScalaGenIfThenElse with ScalaGenVariables with ScalaGenWhile with ScalaGenFunctions
   with ScalaGenImplicitOps with ScalaGenNumericOps with ScalaGenOrderingOps with ScalaGenStringOps
   with ScalaGenBooleanOps with ScalaGenPrimitiveOps with ScalaGenMiscOps with ScalaGenTupleOps
   with ScalaGenMathOps with ScalaGenCastingOps with ScalaGenObjectOps with ScalaGenArrayOps with ScalaGenRangeOps
-  with ScalaGenStruct
+  with ScalaGenStruct with GenericFatCodegen
   with StringAndNumberOpsCodeGen
   { val IR: VectorOpsExp }
 
@@ -94,9 +95,23 @@ object FakeSourceContext {
 }
 
 trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
-
+  def toAtom2[T:Manifest](d: Def[T])(implicit ctx: SourceContext): Exp[T] = super.toAtom(d)
+  def makeVectorSave(saves : List[Exp[Unit]]) = toAtom(VectorSaves(saves))
   
-	trait ClosureNode[A, B] {
+  trait IRNode {
+    var alive = true
+    def reads = {updateReadBy; _readBy.size}
+    private var _readBy = Buffer[IRNode]()
+    def addRead(reader : IRNode) {
+      _readBy += reader
+      updateReadBy
+    }
+    def updateReadBy {
+      _readBy = _readBy.filter(_.alive)
+    }
+  }
+  
+	trait ClosureNode[A, B] extends IRNode {
       val in : Exp[Vector[_]]
 	  val func : Exp[A] => Exp[B]
 	  def getClosureTypes : (Manifest[A], Manifest[B])
@@ -122,8 +137,18 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
       def getTypes = (manifest[Nothing], manifest[Vector[A]])
     }
     
+    def addReadBy(reader : IRNode, read : Exp[Vector[_]]) {
+      read match {
+        case Def(x : IRNode) => x.addRead(reader)
+        case _ => 
+      }
+    }
+    
+    def makeVectorManifest[B : Manifest] = manifest[Vector[B]]
+    
     case class VectorMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[B]) //, convert : Exp[Int] => Exp[A])
        extends Def[Vector[B]] with ComputationNodeTyped[Vector[A],Vector[B]] with ClosureNode[A, B]{
+      addReadBy(this, in)
    	  val mA = manifest[A]
       val mB = manifest[B]
    	  def getClosureTypes = (mA, mB)
@@ -147,7 +172,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     }
    
     case class VectorFlatten[A : Manifest](v1 : Exp[Vector[A]], v2 : Exp[Vector[A]]) extends Def[Vector[A]] 
-    		with PreservingTypeComputation[Vector[A]] {
+    		with PreservingTypeComputation[Vector[A]] with IRNode {
       val mA = manifest[A]
       def getType = manifest[Vector[A]]
     }
@@ -177,7 +202,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     	def getTypes = (manifest[Vector[A]], manifest[Nothing])
     }
     
-    case class VectorSaves(val saves : List[VectorSave[_]]) extends Def[Unit] {
+    case class VectorSaves(val saves : List[Exp[Unit]]) extends Def[Unit] {
       var ids = List[Int]()
     }
     
@@ -190,60 +215,69 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     override def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Exp[A] => Exp[Boolean]) = VectorFilter(vector, f)
     override def vector_save[A : Manifest](vector : Exp[Vector[A]], file : Exp[String]) = {
       val save = VectorSave[A](vector, file)
-        reflectEffect(save)
+      reflectEffect(save)
     }
     override def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) = VectorFlatten(vector1, vector2)
     override def vector_reduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V] ) = VectorReduce(vector, f)
     override def vector_groupByKey[K: Manifest, V : Manifest](vector : Exp[Vector[(K,V)]]) = VectorGroupByKey(vector)
     
-    override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Exp[A] = (e match {
+    override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Exp[A] = {
+        
+        e match {
     //case Copy(a) => f(a)
+        case vs@VectorSaves(list) => toAtom(VectorSaves(f(list)))
+        case flat@VectorFlatten(v1, v2) => toAtom(VectorFlatten(f(v1), f(v2))(flat.mA))
         case vm@NewVector(vector) => toAtom(NewVector(f(vector))(vm.mA))(mtype(vm.mA), implicitly[SourceContext])
-	    case vm@VectorMap(vector,func) => toAtom(VectorMap(f(vector), f(func))(vm.mA, vm.mB))(mtype(vm.mB), implicitly[SourceContext])
+	    case vm@VectorMap(vector,func) => toAtom(VectorMap(f(vector), f(func))(vm.mA, vm.mB))(vm.getTypes._2, implicitly[SourceContext])
 	    case vf@VectorFilter(vector,func) => toAtom(VectorFilter(f(vector), f(func))(vf.mA))(mtype(manifest[A]), implicitly[SourceContext])
 	    case vfm@VectorFlatMap(vector,func) => toAtom(VectorFlatMap(f(vector), f(func))(vfm.mA, vfm.mB))(mtype(manifest[A]), implicitly[SourceContext])
 	    case gbk@VectorGroupByKey(vector) => toAtom(VectorGroupByKey(f(vector))(gbk.mKey, gbk.mValue))(mtype(manifest[A]), implicitly[SourceContext])
+	    case vs@VectorSave(vector, path) => toAtom(VectorSave(f(vector), f(path))(vs.mA))
 	    case Reflect(vs@VectorSave(vector, path), u, es) => reflectMirrored(Reflect(VectorSave(f(vector), f(path))(vs.mA), mapOver(f,u), f(es)))
 	    case Reify(x, u, es) => toAtom(Reify(f(x), mapOver(f,u), f(es)))(mtype(manifest[A]), implicitly[SourceContext])
 	    case _ => super.mirror(e,f)
-	}).asInstanceOf[Exp[A]]
+	}}.asInstanceOf[Exp[A]]
 
     
   override def syms(e: Any): List[Sym[Any]] = e match { //TR TODO: question -- is alloc a dependency (should be part of result) or a definition (should not)???
                                                         // aks: answer -- we changed it to be internal to the op to make things easier for CUDA. not sure if that still needs
                                                         // to be the case. similar question arises for sync
+    case s: ClosureNode[_,_]  => syms(s.in, s.closure) ++ super.syms(e) // super call: add case class syms (iff flag is set)
+    case VectorFlatten(x,y) => syms(x,y) ++ super.syms(e)
     case VectorSaves(saves) => syms(saves)
     case NewVector(arg) => syms(arg)
     case VectorSave(vec, path) => syms(vec, path)
-    case s: VectorMap[_,_]  => syms(s.func, s.in) ++ super.syms(e) // super call: add case class syms (iff flag is set)
+//    case s: VectorMap[_,_]  => syms(s.func, s.in) ++ super.syms(e) // super call: add case class syms (iff flag is set)
     case _ => super.syms(e)
   }
     
    override def readSyms(e: Any): List[Sym[Any]] = e match { //TR FIXME: check this is actually correct
 //    case VectorSaves => syms(VectorSaves.saves)
     case s: VectorMap[_,_]  => syms(s.func, s.in) ++ super.syms(e) // super call: add case class syms (iff flag is set)
+    case VectorFlatten(x,y) => syms(x,y) ++ super.syms(e)
     case _ => super.readSyms(e)
   }
   
   override def boundSyms(e: Any): List[Sym[Any]] = e match {
 //    case VectorSaves => syms(VectorSaves.saves)
     case s: VectorMap[_,_]  => effectSyms(s.func, s.in)
+    case VectorFlatten(x,y) => effectSyms(x,y)
     case _ => super.boundSyms(e)
   }
 
-  
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
+     case s: ClosureNode[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
+     case VectorFlatten(x,y) => freqNormal(x,y)
     case VectorSaves(saves) => freqNormal(saves)
     case NewVector(arg) => freqNormal(arg)
     case VectorSave(vec, path) => freqNormal(vec, path)
-    case s: VectorMap[_,_]  => freqHot(s.func)++freqNormal(s.in)
+//    case s: VectorMap[_,_]  => freqHot(s.func)++freqNormal(s.in)
     case _ => super.symsFreq(e)
   }
   
 	/////////////////////
   // aliases and sharing
   // TODO
-
     
 }
 
@@ -251,19 +285,19 @@ trait VectorImplOps extends VectorOps with FunctionsExp  {
   
 }
 
-trait ScalaGenVector extends ScalaGenBase {
+trait ScalaGenVector extends ScalaGenBase with GenericFatCodegen with SimplifyTransform with FatScheduling {
   val IR: VectorOpsExp
   import IR._
     override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter) = rhs match {
       case nv@NewVector(filename) => emitValDef(sym, "New vector created from %s with type %s".format(filename, nv.mA))
       case vs@VectorSave(vector, filename) => stream.println("Saving vector %s (of type %s) to %s".format(vector, vs.mA, filename))
-      case vm@VectorMap(vector, function) => emitValDef(sym, "mapping vector %s with function %s".format(vector, function))
+      case vm@VectorMap(vector, function) => emitValDef(sym, "mapping vector %s with function %s, type %s => %s".format(vector, quote(vm.closure), vm.mA, vm.mB))
       case vf@VectorFilter(vector, function) => emitValDef(sym, "filtering vector %s with function %s".format(vector, function))
       case vm@VectorFlatMap(vector, function) => emitValDef(sym, "flat mapping vector %s with function %s".format(vector, function))
       case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
       case gbk@VectorGroupByKey(vector) => emitValDef(sym, "grouping vector by key")
       case red@VectorReduce(vector, f) => emitValDef(sym, "reducing vector")
-//      case VectorSaves => stream.println("// saving all the vectors")
+      case VectorSaves(list) => stream.println("// saving all the vectors")
       case GetArgs() => emitValDef(sym, "getting the arguments")
     case _ => super.emitNode(sym, rhs)
   }

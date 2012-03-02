@@ -15,6 +15,13 @@ import scalax.collection.GraphEdge._
 import java.io.StringWriter
 import scalax.collection.GraphTraversal.VisitorReturn._
 import scalax.collection.GraphTraversal._
+import scala.virtualization.lms.common.BaseExp
+import scala.virtualization.lms.internal.Transforming
+import internal.GenericFatCodegen
+import common.SimplifyTransform
+import internal.FatScheduling
+import scala.collection.mutable
+
 
 trait HadoopGen extends HadoopCodeGen with VectorBaseCodeGenPkg
 
@@ -24,8 +31,10 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce
 	  , ComputationNode, VectorSaves}
+	import IR.{TTP, TP, SubstTransformer, IRNode, Transformer}
 	import IR.{findDefinition}
-
+	import IR.{ClosureNode, freqHot, freqNormal, Lambda}
+	
 	class MscrPart (var mscr : Mscr = null)
 
 	case class Mapper(val input : Node) extends MscrPart {
@@ -95,7 +104,8 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 			case Reify(Sym(x),_,_) => Save(id)
 			case Reify(_,_,_) => Save(id)
 //			case VectorSaves(_) => AllSave(id)
-			case _ => {println("did not find for "+id+ " "+x); null}
+//			case _ => {println("did not find for "+id+ " "+x); null}
+			case _ => null
 //			case _ => throw new RuntimeException("TODO: Add Partner Node for "+x)
 		}
 	  if (out != null)
@@ -207,9 +217,9 @@ class GraphState {
 	def getEdgeNotes(from : Node, to : Node) : String = {
 	  
 	  def getMscr(node : Node) = node.mscrPart.head.mscr
-	  if (getMscr(from)!=getMscr(to)) {
-	    return "Create intermediate store / read"
-	  }
+//	  if (getMscr(from)!=getMscr(to)) {
+//	    return "Create intermediate store / read"
+//	  }
 	  to match {
 	    case TaggedGroupByKey(x, tag) => return "emit key with tag "+tag 
 	    case GroupByKey(x) => return "emit"
@@ -219,9 +229,9 @@ class GraphState {
 	    case TaggedGroupByKey(x, tag) => return "use only keys with tag "+tag 
 	    case _ => 
 	  }
-	  if (getMscr(from)!=getMscr(to)) {
-	    return "Create intermediate store / read"
-	  }
+//	  if (getMscr(from)!=getMscr(to)) {
+//	    return "Create intermediate store / read"
+//	  }
 	  ""
 	}
 	
@@ -396,9 +406,14 @@ class GraphState {
 		
 		def writeTypes {
 		  val nodes = graph.nodes.map{x : { def value : Node } => x.value}.toList
+		  System.out.println("---------- TYPES --------------")
 		  for (node <- nodes.sortBy(_.id)) {
 		    System.out.println(node.getOriginal)
-		    //System.out.println(node)
+		    node.getOriginal match {
+		      case x : ComputationNode => println(x.getTypes)
+		      case _ =>
+		    }
+//		    System.out.println(node.getOriginal.getTypes)
 		  }
 		}
 	
@@ -418,38 +433,187 @@ class GraphState {
 	
 	def graphState = GraphState.get()
 	
+	// TODO work in progress
+	trait Transformation {
+	  this : { 
+	    def addSubstitution(sym1 : Exp[_], sym2 : Exp[_])
+//	    def makeTTP() 
+	  } =>
+	  def appliesToNode(inExp : Exp[_]) : Boolean
+	  def applyToNode(inExp : Exp[_], context : Any) {
+		  val out = doTransformation(inExp);
+		  // get dependencies
+		  // find all new Defs
+		  // make TTP's from defs
+		  // add the TTPs to the scope
+	  }
+	  def doTransformation(inExp : Exp[_]) : Def[_]
+			  
+	}
+	
+  override def focusExactScopeFat[A](currentScope0: List[TTP])(result0: List[Exp[Any]])(body: List[TTP] => A): A = {
+    var result1 = result0
+    var scope1 = currentScope0
+    var transformer = new SubstTransformer
+    val toDo = mutable.HashSet[Exp[_]]()
+      def addSubstitution(sym1 : Exp[_], sym2 : Exp[_]) {
+        System.err.println("Adding substitution "+sym1+" = "+sym2)
+        transformer.subst(sym1) = sym2
+      }
+      class MarkerTransformer extends SubstTransformer {
+      
+        override def apply[A](inExp: Exp[A]) : Exp[A] = {
+          val symdeps = inExp match {
+            case Def(x) => IR.syms(x).mkString(", ")
+            case _ => ""
+          }
+//          System.err.print("visiting "+inExp+" "+" symdeps ="+symdeps+"; ");
+//          System.err.println(inExp match {
+//            case Def(y) => y
+//          	case _=> "not a def"
+//          })
+          var replace : Exp[_]= null
+          inExp match {
+            case Def(vm@VectorMap(Def(vf@VectorFlatten(v1, v2)),func)) => {
+              System.err.println("Marking flatten "+vf)
+              toDo+=inExp
+            }
+//            case Def(vm@VectorSave(Def(vf@VectorFlatten(v1, v2)),path)) => {
+//              System.err.println("Sinking flatten behind save "+v1+" "+v2)
+//          }
+            case _ => 
+          }
+
+////          	case Def(v1@VectorMap(Def(v2@VectorMap(in, f1)), f2)) 
+////          	if v2.reads <= 1 => {
+////          	  replace = IR.syms(v1).apply(1)
+////          	  def getInputSymbol(v : VectorMap[_,_]) = {
+////	          	  val clos = v.closure match {
+////	          	    case Def(l:Lambda[_,_]) => l
+////	          	    case _ => null
+////	          	  }
+////	          	  clos.x
+////          	  }
+////          	  v1.alive = false
+////          	  v2.alive = false
+////          	  System.err.println("Merging VectorMaps "+v1+" "+v2)
+////          	  val composed = VectorMap(in, f1.andThen(f2))(v2.mA, v1.mB)
+////          	  
+////          	  val out = IR.toAtom2(composed)
+////          	  out match {
+////          	    case Def(v : VectorMap[_,_]) => addSubstitution(getInputSymbol(v2),getInputSymbol(v))
+////          	    case _ => 
+////          	  }
+////          	  out
+////          	}
+//          	case _ => inExp
+//          }).asInstanceOf[Exp[A]]
+//          if (out != inExp) {
+//            addSubstitution(inExp, out)
+//            out match {
+//              case Def(vm@VectorMap(x,y)) => {
+//                addSubstitution(replace, vm.closure)
+//              }
+//              case _ =>
+//            }
+//            
+//          }
+          inExp
+        }
+      }
+      var i = 0
+      do {
+    	  toDo.clear
+		  var marker = new MarkerTransformer()
+    	  transformer = new SubstTransformer()
+		  // with fatschedule: deps(IR.syms(result)).map(_.rhs)
+		  var returned = transformAllFully(scope1, result1, marker);
+		  scope1 = returned._1
+		  result1 = returned._2
+//		  scope1.foreach(println)
+//		  result.foreach(println)
+		  for (exp <- toDo) {
+	          exp match {
+	            case Def(vm@VectorMap(Def(vf@VectorFlatten(v1, v2)),func)) => {
+	              System.err.println("found flatten "+vf)
+	              val mapLeft = new VectorMap(v1,func)
+	              val mapRight = new VectorMap(v2,func)
+	              val defLeft = IR.toAtom2(mapLeft)
+	              val defRight = IR.toAtom2(mapRight)
+	              val flatten = new VectorFlatten(defLeft, defRight)
+	              val flattened = IR.toAtom2(flatten)
+	              addSubstitution(exp, flattened)
+	              val newDefs = List(flatten, mapLeft, mapRight)
+	              val ttps = newDefs.map(IR.findOrCreateDefinition(_,Nil)).map(fatten)
+	              scope1 = scope1 ++ ttps
+	              flattened
+	            }
+	//            case Def(vm@VectorSave(Def(vf@VectorFlatten(v1, v2)),path)) => {
+	//              System.err.println("Sinking flatten behind save "+v1+" "+v2)
+	          }
+		    
+		  }
+	//	  t = new Transformer()
+		  returned = transformAllFully(scope1, result1, transformer)
+		  scope1 = returned._1
+		  result1 = returned._2
+		  i += 1
+      } while (!toDo.isEmpty && i < 100)
+	  buildGraph(scope1.flatMap{
+	    x =>
+	      x match {
+	      	case TTP(_,IR.ThinDef(x)) => Some(x)
+	      	case _ => None
+	      }
+	  }.map(IR.findOrCreateDefinition(_,Nil)))
+	  super.focusExactScopeFat(scope1)(result1)(body)
+	}
+//	override def emitFatBlockFocused(scope: List[TTP])(result: List[Exp[Any]])(implicit stream: PrintWriter): Unit = {
+//
+//	  println("emitFatBlockFocused "+scope+" result "+result)
+//	  super.getFatSchedule(transformed._1)(transformed._2)
+//	}
+//	
+//    override def focusExactScopeFat[A](currentScope0: List[TTP])(result0: List[Exp[Any]])(body: List[TTP] => A): A = {
+//	  super.focusExactScopeFat[A](transformed._1)(transformed._2)(body)
+//	}	
 	
 	override def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {
 		val out = super.emitSource(f, className, stream)
 	  val defs = IR.globalDefs
-	  val leftDefs = defs.flatMap{x => x.rhs match {case Reflect(vs@VectorSave(_,_),_,_) => Some((x.sym,vs)) case _ => None}}
+	  val leftDefs = defs.flatMap{x => x.rhs match {case r@Reflect(vs@VectorSave(_,_),_,_) => Some((x.sym,vs)) case _ => None}}
       val savesSym = IR.fresh[VectorSaves](Nil)
-      val saves = VectorSaves(leftDefs.map(_._2))
-      saves.ids = leftDefs.map(_._1.id)
-	  IR.createDefinition(savesSym, saves)
-      GraphState.set(null)
-	  buildGraph(IR.globalDefs)
-	  FileOutput.writeln(graphState.export)
+      FileOutput.writeln(graphState.export)
 	  graphState.writeTypes
 	  out
 	}
 	
 	def buildGraph(defs : List[IR.TP[_]]){
 	  for (tp <- defs) {
+	    val doThis = tp.rhs match {
+	      case x : IRNode => x.alive
+	      case Reflect(x : IRNode,_,_) => x.alive
+	      case _ => true
+	    }
+	    if (doThis)
 	    updateGraph(tp.sym, tp.rhs)
 	  }
 	}
 	
 	def updateGraph(sym: Sym[Any], rhs: Def[Any]): Unit = {
 		val op = findDefinition(sym).get.rhs;
+//		println(sym +" "+rhs)
 		graphState.map.get(sym.id).orElse(getPartnerNode(sym.id, op))
 		.map{ partnerNode =>
+		   
 			graphState.map(sym.id) = partnerNode
 			val otherAttributes = getOtherAttributes(op).map( x=> "%s=%s".format(x._1, x._2)).mkString(",")
 			partnerNode.graphOptions = otherAttributes
 			for (x <- getInputs(rhs)) {
+			  if (graphState.map.contains(x)) {
 				val node = graphState.map(x)
 				graphState.builder += node ~> partnerNode
+			  }
 			}
 		}
 	}
@@ -459,3 +623,5 @@ class GraphState {
 	}
 
 }
+
+
