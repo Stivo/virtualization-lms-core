@@ -48,7 +48,9 @@ trait VectorsProg extends VectorImplOps {
     val wordsInLine = lines//.map( _.split("\\s+").apply(1)).flatMap(_.split("[:/_.,]").toSeq)
 //    words.map(_.contains(" ")).save("lines with more than one word")
     val wordsTupled = wordsInLine.map((_, unit(1)))
-    val counted = wordsTupled.groupByKey.reduce(_+_)//.filter(_._2 > 10)
+    val grouped = wordsTupled.groupByKey//.filter(_._2 > 10)
+    val counted = grouped.reduce(_+_)
+//    grouped.save(output+"/wordgroups")
     counted.save(output+"/wordcounts")
 
 //    val inverted = counted.map(x => (x._2,x._1))
@@ -143,13 +145,13 @@ class TestVectors extends FileDiffSuite {
       val writer = new StringWriter()
       val printer = new PrintWriter(writer)
       
-//      val dslSpark = new VectorsProg with SparkProgram
-//      //      val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
-////      codegenDeps.emitSource(dsl.simple, "g", new PrintWriter(System.out))
-//      
-//      val codegenSpark = new SparkGen { val IR: dslSpark.type = dslSpark }
-//      codegenSpark.emitSource(dslSpark.wordCount, "Spark", printer)
-//      println(writer.toString)
+      val dslSpark = new VectorsProg with SparkProgram
+      //      val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
+//      codegenDeps.emitSource(dsl.simple, "g", new PrintWriter(System.out))
+      
+      val codegenSpark = new SparkGen { val IR: dslSpark.type = dslSpark }
+      codegenSpark.emitSource(dslSpark.simple, "Spark", printer)
+      println(writer.toString)
       
 //      val dest = "/home/stivo/master/spark/examples/src/main/scala/spark/examples/SparkGenerated.scala"
 //      val fw = new FileWriter(dest)

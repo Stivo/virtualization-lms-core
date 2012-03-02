@@ -23,13 +23,16 @@ trait Functions extends Base {
 
 trait FunctionsExp extends Functions with EffectExp {
 
-  case class Lambda[A:Manifest,B:Manifest](f: Exp[A] => Exp[B], x: Sym[A], y: Exp[B]) extends Def[A => B]
+  case class Lambda[A:Manifest,B:Manifest](f: Exp[A] => Exp[B], x: Sym[A], y: Exp[B]) extends Def[A => B] {
+  	val mA = manifest[A]
+	val mB = manifest[B]
+  }
+  
   case class Lambda2[A1:Manifest,A2:Manifest,B:Manifest](f: (Exp[A1],Exp[A2]) => Exp[B], x1: Sym[A1], x2: Sym[A2], y: Exp[B]) extends Def[(A1,A2) => B]
 
   case class Apply[A:Manifest,B:Manifest](f: Exp[A => B], arg: Exp[A]) extends Def[B]
 
   def doLambda[A:Manifest,B:Manifest](f: Exp[A] => Exp[B])(implicit ctx: SourceContext) : Exp[A => B] = {
-
     val x = fresh[A]
     val y = reifyEffects(f(x)) // unfold completely at the definition site. 
                                // TODO: this will not work if f is recursive. 
@@ -91,7 +94,12 @@ trait FunctionsExp extends Functions with EffectExp {
     case Lambda2(f, x1, x2, y) => freqHot(y)
     case _ => super.symsFreq(e)
   }
-
+  
+    override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Exp[A] = 
+	    (e match {
+	      case l@Lambda(func,x,y) => e //toAtom(Lambda(f(func),x,f(y))(mtype(l.mA), l.mB))
+	      case _ => super.mirror(e, f)
+	    })//.asInstanceOf[Exp[A]]
 }
 
 trait BaseGenFunctions extends GenericNestedCodegen {
