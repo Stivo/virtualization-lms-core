@@ -31,7 +31,7 @@ trait HadoopCodeGen extends ScalaGenBase with ScalaGenVector {
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce
 	  , ComputationNode, VectorSaves}
-	import IR.{TTP, TP, SubstTransformer, IRNode, Transformer}
+	import IR.{TTP, TP, SubstTransformer, IRNode}
 	import IR.{findDefinition}
 	import IR.{ClosureNode, freqHot, freqNormal, Lambda}
 	
@@ -433,150 +433,127 @@ class GraphState {
 	
 	def graphState = GraphState.get()
 	
-	// TODO work in progress
+	class MarkerTransformer( val transformation : Transformation) extends SubstTransformer {
+		private var toDo = mutable.HashSet[Exp[_]]()
+		override def apply[A](inExp: Exp[A]) : Exp[A] = {
+		  if (transformation.appliesToNode(inExp)) {
+		    toDo += inExp
+		  }
+		  inExp
+		}
+		def getTodo = toDo.toSet
+	}
+	
+	class Transformer(var currentState : TransformationState, val transformations : List[Transformation]) {
+	  def doOneStep = {
+	    var out = false
+		for (transformation <- transformations) {
+		  val marker = new MarkerTransformer(transformation)
+		  transformAll(marker)
+		  for (exp <- marker.getTodo) {
+		    out = true
+		    System.out.println("Applying "+transformation+" to node "+exp)
+		    val (ttps, substs) = transformation.applyToNode(exp, this)
+		    val newState = new TransformationState(currentState.ttps ++ ttps, currentState.results)
+		    val subst = new SubstTransformer()
+		    subst.subst ++= substs
+		    currentState = transformAll(subst, newState)
+		  }
+		}
+	    out
+	  }
+		
+		def transformAll(marker : SubstTransformer, state : TransformationState = currentState) = {
+		  val after = transformAllFully(state.ttps, state.results, marker) match {
+		    case (scope, results) => new TransformationState(scope, results)
+		    case _ => state
+		  }
+		  after
+		}
+			
+		def readingNodes (inExp : Def[_])= {
+		  val reading = IR.syms(inExp)
+		  reading.map(IR.findDefinition(_).get.rhs)
+		}
+		
+	}
+	
+	class TransformationState(val ttps : List[TTP], val results : List[Exp[Any]])
+	
 	trait Transformation {
-	  this : { 
-	    def addSubstitution(sym1 : Exp[_], sym2 : Exp[_])
-//	    def makeTTP() 
-	  } =>
+	  
 	  def appliesToNode(inExp : Exp[_]) : Boolean
-	  def applyToNode(inExp : Exp[_], context : Any) {
+	  def applyToNode(inExp : Exp[_], transformer : Transformer) = {
 		  val out = doTransformation(inExp);
 		  // get dependencies
+		  val readers = transformer.readingNodes(out)
 		  // find all new Defs
+		  val newDefs = List(out)++readers
 		  // make TTP's from defs
-		  // add the TTPs to the scope
+		  val ttps = newDefs.map(IR.findOrCreateDefinition(_,Nil)).map(fatten)
+		  // return ttps and substitutions
+		  (ttps, List((inExp, IR.findOrCreateDefinition(out,Nil).sym))) 
 	  }
-	  def doTransformation(inExp : Exp[_]) : Def[_]
-			  
+	  def doTransformation(inExp : Exp[_]) :Def[_]
+		
+	  override def toString = 
+	    this.getClass.getSimpleName.replaceAll("Transformation","")
+	    .split("(?=[A-Z])").mkString(" ")
+	  
+	}
+	
+	class SinkFlattenTransformation extends Transformation {
+	   def appliesToNode(inExp : Exp[_]) = {
+	       inExp match {
+            case Def(vm@VectorMap(Def(vf@VectorFlatten(v1, v2)),func)) => true
+            case _ => false
+	      }
+	   }
+	   def doTransformation(inExp : Exp[_]) = inExp match {
+            case Def(vm@VectorMap(Def(vf@VectorFlatten(v1, v2)),func)) => {
+              val mapLeft = new VectorMap(v1,func)
+              val mapRight = new VectorMap(v2,func)
+              val defLeft = IR.toAtom2(mapLeft)
+              val defRight = IR.toAtom2(mapRight)
+              val flatten = new VectorFlatten(defLeft, defRight)
+              val flattened = IR.toAtom2(flatten)
+              val newDefs = flatten
+              newDefs
+            }
+           // match error is ok, should not happen
+	   }
+
+	}
+	
+	trait SimpleTransformation extends Transformation {
+	  def appliesToNode(inExp : Exp[_]) = {
+	    doTransformationPure(inExp) != null
+	  }
+	  final def doTransformation(inExp : Exp[_]) = {
+	    doTransformationPure(inExp)
+	  }
+	  def doTransformationPure(inExp : Exp[_]) : Def[_]
+	}
+	
+	class MergeMapsTransformation extends SimpleTransformation {
+	   def doTransformationPure(inExp : Exp[_]) = inExp match {
+            case Def(m1@VectorMap(Def(m2@VectorMap(v1, f2)),f1)) => {
+              new VectorMap(v1, f2.andThen(f1))
+            }
+            case _ => null
+	   }
 	}
 	
   override def focusExactScopeFat[A](currentScope0: List[TTP])(result0: List[Exp[Any]])(body: List[TTP] => A): A = {
-    var result1 = result0
-    var scope1 = currentScope0
-    var transformer = new SubstTransformer
-    val toDo = mutable.HashSet[Exp[_]]()
-      def addSubstitution(sym1 : Exp[_], sym2 : Exp[_]) {
-        System.err.println("Adding substitution "+sym1+" = "+sym2)
-        transformer.subst(sym1) = sym2
-      }
-      class MarkerTransformer extends SubstTransformer {
-      
-        override def apply[A](inExp: Exp[A]) : Exp[A] = {
-          val symdeps = inExp match {
-            case Def(x) => IR.syms(x).mkString(", ")
-            case _ => ""
-          }
-//          System.err.print("visiting "+inExp+" "+" symdeps ="+symdeps+"; ");
-//          System.err.println(inExp match {
-//            case Def(y) => y
-//          	case _=> "not a def"
-//          })
-          var replace : Exp[_]= null
-          inExp match {
-            case Def(vm@VectorMap(Def(vf@VectorFlatten(v1, v2)),func)) => {
-              System.err.println("Marking flatten "+vf)
-              toDo+=inExp
-            }
-//            case Def(vm@VectorSave(Def(vf@VectorFlatten(v1, v2)),path)) => {
-//              System.err.println("Sinking flatten behind save "+v1+" "+v2)
-//          }
-            case _ => 
-          }
-
-////          	case Def(v1@VectorMap(Def(v2@VectorMap(in, f1)), f2)) 
-////          	if v2.reads <= 1 => {
-////          	  replace = IR.syms(v1).apply(1)
-////          	  def getInputSymbol(v : VectorMap[_,_]) = {
-////	          	  val clos = v.closure match {
-////	          	    case Def(l:Lambda[_,_]) => l
-////	          	    case _ => null
-////	          	  }
-////	          	  clos.x
-////          	  }
-////          	  v1.alive = false
-////          	  v2.alive = false
-////          	  System.err.println("Merging VectorMaps "+v1+" "+v2)
-////          	  val composed = VectorMap(in, f1.andThen(f2))(v2.mA, v1.mB)
-////          	  
-////          	  val out = IR.toAtom2(composed)
-////          	  out match {
-////          	    case Def(v : VectorMap[_,_]) => addSubstitution(getInputSymbol(v2),getInputSymbol(v))
-////          	    case _ => 
-////          	  }
-////          	  out
-////          	}
-//          	case _ => inExp
-//          }).asInstanceOf[Exp[A]]
-//          if (out != inExp) {
-//            addSubstitution(inExp, out)
-//            out match {
-//              case Def(vm@VectorMap(x,y)) => {
-//                addSubstitution(replace, vm.closure)
-//              }
-//              case _ =>
-//            }
-//            
-//          }
-          inExp
-        }
-      }
-      var i = 0
-      do {
-    	  toDo.clear
-		  var marker = new MarkerTransformer()
-    	  transformer = new SubstTransformer()
-		  // with fatschedule: deps(IR.syms(result)).map(_.rhs)
-		  var returned = transformAllFully(scope1, result1, marker);
-		  scope1 = returned._1
-		  result1 = returned._2
-//		  scope1.foreach(println)
-//		  result.foreach(println)
-		  for (exp <- toDo) {
-	          exp match {
-	            case Def(vm@VectorMap(Def(vf@VectorFlatten(v1, v2)),func)) => {
-	              System.err.println("found flatten "+vf)
-	              val mapLeft = new VectorMap(v1,func)
-	              val mapRight = new VectorMap(v2,func)
-	              val defLeft = IR.toAtom2(mapLeft)
-	              val defRight = IR.toAtom2(mapRight)
-	              val flatten = new VectorFlatten(defLeft, defRight)
-	              val flattened = IR.toAtom2(flatten)
-	              addSubstitution(exp, flattened)
-	              val newDefs = List(flatten, mapLeft, mapRight)
-	              val ttps = newDefs.map(IR.findOrCreateDefinition(_,Nil)).map(fatten)
-	              scope1 = scope1 ++ ttps
-	              flattened
-	            }
-	//            case Def(vm@VectorSave(Def(vf@VectorFlatten(v1, v2)),path)) => {
-	//              System.err.println("Sinking flatten behind save "+v1+" "+v2)
-	          }
-		    
-		  }
-	//	  t = new Transformer()
-		  returned = transformAllFully(scope1, result1, transformer)
-		  scope1 = returned._1
-		  result1 = returned._2
-		  i += 1
-      } while (!toDo.isEmpty && i < 100)
-	  buildGraph(scope1.flatMap{
-	    x =>
-	      x match {
-	      	case TTP(_,IR.ThinDef(x)) => Some(x)
-	      	case _ => None
-	      }
-	  }.map(IR.findOrCreateDefinition(_,Nil)))
-	  super.focusExactScopeFat(scope1)(result1)(body)
-	}
-//	override def emitFatBlockFocused(scope: List[TTP])(result: List[Exp[Any]])(implicit stream: PrintWriter): Unit = {
-//
-//	  println("emitFatBlockFocused "+scope+" result "+result)
-//	  super.getFatSchedule(transformed._1)(transformed._2)
-//	}
-//	
-//    override def focusExactScopeFat[A](currentScope0: List[TTP])(result0: List[Exp[Any]])(body: List[TTP] => A): A = {
-//	  super.focusExactScopeFat[A](transformed._1)(transformed._2)(body)
-//	}	
+    val state = new TransformationState(currentScope0, result0)
+    val transformer = new Transformer(state, List(new SinkFlattenTransformation(), new MergeMapsTransformation()))
+//    buildGraph(transformer)
+    transformer.doOneStep
+//    buildGraph(transformer)
+    transformer.doOneStep
+    buildGraph(transformer)
+    super.focusExactScopeFat(transformer.currentState.ttps)(transformer.currentState.results)(body)
+  }
 	
 	override def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {
 		val out = super.emitSource(f, className, stream)
@@ -588,7 +565,14 @@ class GraphState {
 	  out
 	}
 	
-	def buildGraph(defs : List[IR.TP[_]]){
+	def buildGraph(transformer : Transformer){
+	  val defs = transformer.currentState.ttps.flatMap{
+	    x =>
+	      x match {
+	      	case TTP(_,IR.ThinDef(x)) => Some(x)
+	      	case _ => None
+	      }
+	  }.map(IR.findOrCreateDefinition(_,Nil))
 	  for (tp <- defs) {
 	    val doThis = tp.rhs match {
 	      case x : IRNode => x.alive
