@@ -4,6 +4,7 @@ package distributed
 
 import scala.virtualization.lms.common.ScalaGenBase
 import java.io.PrintWriter
+import scala.reflect.SourceContext
 
 trait SparkProgram extends VectorOpsExp with VectorImplOps with SparkVectorOpsExp {
   
@@ -48,6 +49,13 @@ trait SparkVectorOpsExp extends VectorOpsExp {
     case s: VectorReduce[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
     case _ => super.symsFreq(e)
   }
+  
+      override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Exp[A] = {
+        (e match {
+        	case v@VectorReduceByKey(vector, func) => toAtom(VectorReduceByKey(f(vector), f(func))(v.mKey, v.mValue))
+        	case _ => super.mirror(e, f)
+        }).asInstanceOf[Exp[A]]
+      }
 }
 
 trait SparkTransformations extends VectorTransformations {
@@ -59,7 +67,7 @@ trait SparkTransformations extends VectorTransformations {
   	  
 	   def doTransformationPure(inExp : Exp[_]) = inExp match {
             case Def(red@VectorReduce(Def(gbk@VectorGroupByKey(v1)),f1)) => {
-              new VectorReduceByKey(v1, f1)
+              new VectorReduceByKey(v1, f1)(red.mKey, red.mValue)
             }
             case _ => null
 	   }
@@ -67,14 +75,14 @@ trait SparkTransformations extends VectorTransformations {
 
   	class PullSparkDependenciesTransformation extends PullDependenciesTransformation {
 
- 	   override def appliesToNode(inExp : Exp[_], t : Transformer) = {
-	     inExp match {
-	       case Def(VectorReduceByKey(in, func)) => true
-	       case _ => super.appliesToNode(inExp, t)
-	     }
+ 	   override def appliesToNodeImpl(inExp : Exp[_], t : Transformer) = {
+		   inExp match {
+		     case Def(VectorReduceByKey(in, func)) => true
+		     case _ => super.appliesToNodeImpl(inExp, t)
+		   }
 	   }
  	   override def doTransformation(inExp : Exp[_]) : Def[_] = inExp match {
-	     case Def(r@VectorReduceByKey(in, func)) => r
+	     case Def(r@VectorReduceByKey(in, func)) => _doneNodes += inExp; r
  	     case _ => super.doTransformation(inExp)
  	   }
 	}
@@ -103,14 +111,18 @@ trait SparkGenVector extends ScalaGenBase with ScalaGenVector with SparkTransfor
       case vm@VectorMap(vector, function) => emitValDef(sym, "%s.map(%s)".format(quote(vector), quote(vm.closure)))
       case vf@VectorFilter(vector, function) => emitValDef(sym, "%s.filter(%s)".format(quote(vector), quote(vf.closure)))
       case vm@VectorFlatMap(vector, function) => emitValDef(sym, "%s.flatMap(%s)".format(quote(vector), quote(vm.closure)))
-//      case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
+      case vm@VectorFlatten(v1) => {
+        var out = "("+v1.map(quote(_)).mkString(").union(")
+        out += ")"
+        emitValDef(sym, out)
+      }
       case gbk@VectorGroupByKey(vector) => emitValDef(sym, "%s.groupByKey".format(quote(vector)))
       case red@VectorReduce(vector, f) => emitValDef(sym, "%s.map(x => (x._1,x._2.reduce(%s)))".format(quote(vector), quote(red.closure)))
       case red@VectorReduceByKey(vector, f) => emitValDef(sym, "%s.reduceByKey(%s)".format(quote(vector), quote(red.closure)))
       case GetArgs() => emitValDef(sym, "sparkInputArgs.drop(1); // First argument is for spark context")
     case _ => super.emitNode(sym, rhs)
   }
-    println(sym+" "+rhs)
+//    println(sym+" "+rhs)
     out
     }
   

@@ -280,8 +280,9 @@ class GraphState {
 //					println("forward "+x.value)
 					x.value match {
 					  case _ if gbks.contains(x.value) => Continue
-					case gbk@GroupByKey(_) => gbks += x.value; goBackward(x); Continue
-					case _ => Continue
+					  case gbk@GroupByKey(_) => gbks += x.value; goBackward(x); Continue
+					  case save@Save(_) => goBackward(x); Continue
+					  case _ => Continue
 					}
 				}
 			}

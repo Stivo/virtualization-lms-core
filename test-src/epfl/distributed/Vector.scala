@@ -205,6 +205,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
 	    case vf@VectorFilter(vector,func) => toAtom(VectorFilter(f(vector), f(func))(vf.mA))(mtype(manifest[A]), implicitly[SourceContext])
 	    case vfm@VectorFlatMap(vector,func) => toAtom(VectorFlatMap(f(vector), f(func))(vfm.mA, vfm.mB))(mtype(manifest[A]), implicitly[SourceContext])
 	    case gbk@VectorGroupByKey(vector) => toAtom(VectorGroupByKey(f(vector))(gbk.mKey, gbk.mValue))(mtype(manifest[A]), implicitly[SourceContext])
+	    case v@VectorReduce(vector, func) => toAtom(VectorReduce(f(vector), f(func))(v.mKey, v.mValue))(mtype(manifest[A]), implicitly[SourceContext])
 	    case vs@VectorSave(vector, path) => toAtom(VectorSave(f(vector), f(path))(vs.mA))
 	    case Reflect(vs@VectorSave(vector, path), u, es) => reflectMirrored(Reflect(VectorSave(f(vector), f(path))(vs.mA), mapOver(f,u), f(es)))
 	    case Reify(x, u, es) => toAtom(Reify(f(x), mapOver(f,u), f(es)))(mtype(manifest[A]), implicitly[SourceContext])

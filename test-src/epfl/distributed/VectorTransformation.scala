@@ -89,8 +89,8 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 	
 	class TransformationState(val ttps : List[TTP], val results : List[Exp[Any]]) {
 	  def printAll = {
-	    println("Printing all ttps for the current state")
-	    ttps.foreach(println)
+//	    println("Printing all ttps for the current state")
+//	    ttps.foreach(println)
 	  }
 	}
 	
@@ -235,10 +235,14 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 
 	  var _doneNodes = Set[Any]()
 	  
- 	   def appliesToNode(inExp : Exp[_], t : Transformer) = {
+	  final def appliesToNode(inExp : Exp[_], t : Transformer) = {
 	    if (_doneNodes.contains(inExp))
 	      false 
 	    else
+	      appliesToNodeImpl(inExp : Exp[_], t : Transformer)
+	  }
+	  
+ 	   def appliesToNodeImpl(inExp : Exp[_], t : Transformer) = {
 	     inExp match {
 	       case Def(s : IR.ClosureNode[_,_]) => true
 	       case s : IR.Sym[_] if IR.findDefinition(s).isDefined => true

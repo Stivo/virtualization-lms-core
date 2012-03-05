@@ -65,7 +65,8 @@ trait VectorsProg extends VectorImplOps {
    def twoStage(x: Rep[Unit]) = {
     val words1 = Vector("words1")
     val words2 = Vector("words2")
-    val wordsInLine = words1++words2//.flatMap( _.split(" ").toSeq)
+    val words3 = Vector("words3")
+    val wordsInLine = words1++words2++words3//.flatMap( _.split(" ").toSeq)
 //    words.map(_.contains(" ")).save("lines with more than one word")
     val wordsTupled = wordsInLine.map((_, unit(1)))
     val wordsGrouped = wordsTupled.groupByKey
@@ -136,7 +137,7 @@ class TestVectors extends FileDiffSuite {
       val dsl = new VectorsProg with VectorOpsExp 
 //      val codegen = new ScalaGenFunctions with ScalaGenUtil with ScalaGenVector with ScalaGenBase { val IR: dsl.type = dsl }
 //      codegen.emitSource(dsl.test, "g", new PrintWriter(System.out))
-      val toCompile = dsl.flatten _
+      val toCompile = dsl.twoStage _
       val codegenHadoop = new HadoopGen { val IR: dsl.type = dsl }
       codegenHadoop.emitSource(toCompile, "Hadoop", new PrintWriter(System.out))
 
@@ -149,13 +150,13 @@ class TestVectors extends FileDiffSuite {
 //      codegenDeps.emitSource(dsl.simple, "g", new PrintWriter(System.out))
       
       val codegenSpark = new SparkGen { val IR: dslSpark.type = dslSpark }
-      codegenSpark.emitSource(dslSpark.simple, "Spark", printer)
+      codegenSpark.emitSource(dslSpark.twoStage, "Spark", printer)
       println(writer.toString)
       
-//      val dest = "/home/stivo/master/spark/examples/src/main/scala/spark/examples/SparkGenerated.scala"
-//      val fw = new FileWriter(dest)
-//      fw.write(writer.toString)
-//      fw.close
+      val dest = "/home/stivo/master/spark/examples/src/main/scala/spark/examples/SparkGenerated.scala"
+      val fw = new FileWriter(dest)
+      fw.write(writer.toString)
+      fw.close
       
       println("-- end")
 //    }

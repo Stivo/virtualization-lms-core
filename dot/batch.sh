@@ -7,5 +7,6 @@ for x in test*.dot
 do
 dot -Tpng -o $x.png $x
 done
+eog test0.dot.png
 #cp -u test.png show.png
 
