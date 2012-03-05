@@ -2,6 +2,7 @@ package scala.virtualization.lms
 package epfl.distributed
 
 import scala.virtualization.lms.common.ScalaGenBase
+import common.BooleanOpsExp
 import scala.collection.mutable
 
 trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
@@ -9,7 +10,7 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
     val IR: VectorOpsExp
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce, 
-	  ComputationNode, VectorSaves}
+	  ComputationNode}
 	import IR.{TTP, TP, SubstTransformer, IRNode, ThinDef}
 	import IR.{findDefinition}
 	import IR.{ClosureNode, freqHot, freqNormal, Lambda}
@@ -26,13 +27,24 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 	}
 	
 	class Transformer(var currentState : TransformationState, var transformations : List[Transformation]) {
-	  def doOneStep = {
+	  def stepUntilStable(limit : Int = 20) = {
+	    var i = 0
+	    do {
+	      i += 1
+	    } while(doOneTransformation && (i < limit || limit < 0))
+	    if (i == limit) {
+	      System.err.println("Transformations "+transformations+" did not converge in "+limit+" steps")
+	    }
+	  }
+	  
+	  def doOneTransformation = {
 	    currentState.printAll
+//	    currentState.ttps.get
 	    var out = false
-		for (transformation <- transformations) {
+	    transformations.find { transformation => 
 		  val marker = new MarkerTransformer(transformation, this)
 		  transformAll(marker)
-		  for (exp <- marker.getTodo) {
+		  for (exp <- marker.getTodo.take(1)) {
 		    out = true
 		    System.out.println("Applying "+transformation+" to node "+exp)
 		    val (ttps, substs) = transformation.applyToNode(exp, this)
@@ -41,6 +53,7 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 		    subst.subst ++= substs
 		    currentState = transformAll(subst, newState)
 		  }
+		  out
 		}
 	    currentState.printAll
 	    out
@@ -85,7 +98,7 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 	  
 	  def appliesToNode(inExp : Exp[_], t : Transformer) : Boolean
 	  
-	  def applyToNode(inExp : Exp[_], transformer : Transformer) = {
+	  def applyToNode(inExp : Exp[_], transformer : Transformer) : (List[TTP], List[(Exp[_],Exp[_])]) = {
 		  val out = doTransformation(inExp);
 		  // get dependencies
 		  val readers = transformer.readingNodes(out)
@@ -110,26 +123,52 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 	  
 	}
 	
-    class SinkFlattenTransformation extends Transformation {
-	   def appliesToNode(inExp : Exp[_], t : Transformer) : Boolean = {
-	       inExp match {
-            case Def(vm@VectorMap(Def(vf@VectorFlatten(v1, v2)),func)) => true
-            case _ => false
-	      }
-	   }
-	   def doTransformation(inExp : Exp[_]) = inExp match {
-            case Def(vm@VectorMap(Def(vf@VectorFlatten(v1, v2)),func)) => {
-              val mapLeft = new VectorMap(v1,func)
-              val mapRight = new VectorMap(v2,func)
-              val defLeft = IR.toAtom2(mapLeft)
-              val defRight = IR.toAtom2(mapRight)
-              new VectorFlatten(defLeft, defRight)
+    class SinkFlattenTransformation extends SimpleTransformation {
+	   def doTransformationPure(inExp : Exp[_]) = inExp match {
+            case Def(vm@VectorMap(Def(vf@VectorFlatten(list)),func)) => {
+              val mappers = list.map{ x=>
+                val mapper = new VectorMap(x, func)
+                val newDef = IR.toAtom2(mapper)
+                newDef
+              }
+              new VectorFlatten(mappers)
             }
+            case _ => null
            // match error is ok, should not happen
 	   }
 
 	}
-	
+
+   class MergeFlattenTransformation extends Transformation {
+	   def appliesToNode(inExp : Exp[_], t : Transformer) : Boolean = inExp match {
+            case Def(VectorFlatten(list)) => {
+              list.find{case Def(VectorFlatten(list2)) => true case _ => false}.isDefined
+            }
+            case _ => false
+	   }
+	   
+	   override def applyToNode(inExp : Exp[_], transformer : Transformer) : (List[TTP], List[(Exp[_],Exp[_])]) = {
+	      inExp match {
+	        case Def(lower@VectorFlatten(list)) =>
+	          val flat2 = list.find{case Def(VectorFlatten(list2)) => true case _ => false}.get
+	          flat2 match {
+	            case d@Def(upper@VectorFlatten(list2)) =>
+	              val out = new VectorFlatten(list.filterNot(_==d)++list2)
+	              var newDefs = List(out)
+	              val ttps = newDefs.map(IR.findOrCreateDefinition(_,Nil)).map(fatten)
+	              return (ttps, List((inExp, IR.findOrCreateDefinition(out,Nil).sym),(d, IR.findOrCreateDefinition(out,Nil).sym))) 
+	          }
+	      }
+	      throw new RuntimeException("Bug in merge flatten")
+	  }
+	   
+	   final def doTransformation(inExp : Exp[_]) = {
+	     throw new RuntimeException("Should not be called directly")
+	   }
+
+	}
+
+    
 	trait SimpleTransformation extends Transformation {
 	  override def appliesToNode(inExp : Exp[_], t : Transformer) : Boolean = {
 	    doTransformationPure(inExp) != null
@@ -158,15 +197,48 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
     		  doTransformationPure(inExp) != null
     	  }
     }
-
 	
-	class MergeMapsTransformation extends SimpleTransformation {
+	class MapMergeTransformation extends SimpleSingleConsumerTransformation {
+  	  
 	   def doTransformationPure(inExp : Exp[_]) = inExp match {
-            case Def(m1@VectorMap(Def(m2@VectorMap(v1, f2)),f1)) => {
-              new VectorMap(v1, f2.andThen(f1))
+            case Def(red@VectorMap(Def(gbk@VectorMap(v1, f2)),f1)) => {
+              VectorMap(v1, f2.andThen(f1))(gbk.mA,red.mB)
             }
             case _ => null
 	   }
+	}
+
+//	class FilterMergeTransformation extends SimpleSingleConsumerTransformation with BooleanOpsExp {
+//  	  
+//	   def composePredicates[A : Manifest](p1 : Exp[A] => Exp[Boolean], p2 : Exp[A] => Exp[Boolean]) = { a : Exp[A] => BooleanAnd(p1(a),p2(a))}
+//	   def doTransformationPure(inExp : Exp[_]) = inExp match {
+//            case Def(vf1@VectorFilter(Def(vf2@VectorFilter(v1, f1)),f2)) => {
+//              null
+////              VectorFilter(v1, composePredicates(f1,f2)(vf2.mA))(vf2.mA)
+//            }
+//            case _ => null
+//	   }
+//	}
+
+	class PullDependenciesTransformation extends Transformation {
+
+	  var _doneNodes = Set[Any]()
+	  
+ 	   def appliesToNode(inExp : Exp[_], t : Transformer) = {
+	    if (_doneNodes.contains(inExp))
+	      false 
+	    else
+	     inExp match {
+	       case Def(s : IR.ClosureNode[_,_]) => true
+	       case s : IR.Sym[_] if IR.findDefinition(s).isDefined => true
+	       case _ => false
+	     }
+	   }
+ 	   def doTransformation(inExp : Exp[_]) : Def[_] = inExp match {
+ 	     case Def(s : IR.ClosureNode[_,_]) => _doneNodes += inExp; s
+ 	     case s : IR.Sym[_] if IR.findDefinition(s).isDefined => _doneNodes += inExp; IR.findDefinition(s).get.rhs
+ 	     case _ => null
+ 	   }
 	}
 
 }

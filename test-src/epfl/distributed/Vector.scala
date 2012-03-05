@@ -96,7 +96,6 @@ object FakeSourceContext {
 
 trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
   def toAtom2[T:Manifest](d: Def[T])(implicit ctx: SourceContext): Exp[T] = super.toAtom(d)
-  def makeVectorSave(saves : List[Exp[Unit]]) = toAtom(VectorSaves(saves))
   
   trait IRNode {
     var alive = true
@@ -112,7 +111,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
   }
   
 	trait ClosureNode[A, B] extends IRNode {
-	  var declareClosureAsSym = false
+//	  var declareClosureAsSym = false
       val in : Exp[Vector[_]]
 	  val func : Exp[A] => Exp[B]
 	  def getClosureTypes : (Manifest[A], Manifest[B])
@@ -177,7 +176,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
       def getClosureTypes = (manifest[A], manifest[Iterable[B]])
     }
    
-    case class VectorFlatten[A : Manifest](v1 : Exp[Vector[A]], v2 : Exp[Vector[A]]) extends Def[Vector[A]] 
+    case class VectorFlatten[A : Manifest](vectors : List[Exp[Vector[A]]]) extends Def[Vector[A]] 
     		with PreservingTypeComputation[Vector[A]] with IRNode {
       val mA = manifest[A]
       def getType = manifest[Vector[A]]
@@ -202,14 +201,10 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
 //      def getTypes = (mKey, mValue)
     }
     
-    case class VectorSave[A : Manifest](vector : Exp[Vector[A]], path : Rep[String]) extends Def[Unit]
+    case class VectorSave[A : Manifest](vectors : Exp[Vector[A]], path : Exp[String]) extends Def[Unit]
     		with ComputationNodeTyped[Vector[A], Nothing]{
     	val mA = manifest[A]
     	def getTypes = (manifest[Vector[A]], manifest[Nothing])
-    }
-    
-    case class VectorSaves(val saves : List[Exp[Unit]]) extends Def[Unit] {
-      var ids = List[Int]()
     }
     
     case class GetArgs extends Def[Array[String]]
@@ -220,10 +215,10 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     override def vector_flatMap[A : Manifest, B : Manifest](vector : Rep[Vector[A]], f : Rep[A] => Rep[Iterable[B]]) = VectorFlatMap(vector, f)
     override def vector_filter[A : Manifest](vector : Rep[Vector[A]], f: Exp[A] => Exp[Boolean]) = VectorFilter(vector, f)
     override def vector_save[A : Manifest](vector : Exp[Vector[A]], file : Exp[String]) = {
-      val save = VectorSave[A](vector, file)
+      val save = new VectorSave[A](vector, file)
       reflectEffect(save)
     }
-    override def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) = VectorFlatten(vector1, vector2)
+    override def vector_++[A : Manifest](vector1 : Rep[Vector[A]], vector2 : Rep[Vector[A]]) = VectorFlatten(List(vector1, vector2))
     override def vector_reduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V] ) = VectorReduce(vector, f)
     override def vector_groupByKey[K: Manifest, V : Manifest](vector : Exp[Vector[(K,V)]]) = VectorGroupByKey(vector)
     
@@ -231,8 +226,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
         
         e match {
     //case Copy(a) => f(a)
-        case vs@VectorSaves(list) => toAtom(VectorSaves(f(list)))
-        case flat@VectorFlatten(v1, v2) => toAtom(VectorFlatten(f(v1), f(v2))(flat.mA))
+        case flat@VectorFlatten(list) => toAtom(VectorFlatten(f(list))(flat.mA))
         case vm@NewVector(vector) => toAtom(NewVector(f(vector))(vm.mA))(mtype(vm.mA), implicitly[SourceContext])
 	    case vm@VectorMap(vector,func) => toAtom(VectorMap(f(vector), f(func))(vm.mA, vm.mB))(vm.getTypes._2, implicitly[SourceContext])
 	    case vf@VectorFilter(vector,func) => toAtom(VectorFilter(f(vector), f(func))(vf.mA))(mtype(manifest[A]), implicitly[SourceContext])
@@ -249,8 +243,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
                                                         // aks: answer -- we changed it to be internal to the op to make things easier for CUDA. not sure if that still needs
                                                         // to be the case. similar question arises for sync
     case s: ClosureNode[_,_]  => syms(s.in, s.closure) ++ super.syms(e) // super call: add case class syms (iff flag is set)
-    case VectorFlatten(x,y) => syms(x,y) ++ super.syms(e)
-    case VectorSaves(saves) => syms(saves)
+    case VectorFlatten(x) => syms(x) ++ super.syms(e)
     case NewVector(arg) => syms(arg)
     case VectorSave(vec, path) => syms(vec, path)
 //    case s: VectorMap[_,_]  => syms(s.func, s.in) ++ super.syms(e) // super call: add case class syms (iff flag is set)
@@ -260,21 +253,20 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
    override def readSyms(e: Any): List[Sym[Any]] = e match { //TR FIXME: check this is actually correct
 //    case VectorSaves => syms(VectorSaves.saves)
     case s: VectorMap[_,_]  => syms(s.func, s.in) ++ super.syms(e) // super call: add case class syms (iff flag is set)
-    case VectorFlatten(x,y) => syms(x,y) ++ super.syms(e)
+    case VectorFlatten(x) => syms(x) ++ super.syms(e)
     case _ => super.readSyms(e)
   }
   
   override def boundSyms(e: Any): List[Sym[Any]] = e match {
 //    case VectorSaves => syms(VectorSaves.saves)
     case s: VectorMap[_,_]  => effectSyms(s.func, s.in)
-    case VectorFlatten(x,y) => effectSyms(x,y)
+    case VectorFlatten(x) => effectSyms(x)
     case _ => super.boundSyms(e)
   }
 
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
      case s: ClosureNode[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
-     case VectorFlatten(x,y) => freqNormal(x,y)
-    case VectorSaves(saves) => freqNormal(saves)
+     case VectorFlatten(x) => freqNormal(x)
     case NewVector(arg) => freqNormal(arg)
     case VectorSave(vec, path) => freqNormal(vec, path)
 //    case s: VectorMap[_,_]  => freqHot(s.func)++freqNormal(s.in)
@@ -300,10 +292,9 @@ trait ScalaGenVector extends ScalaGenBase with GenericFatCodegen with SimplifyTr
       case vm@VectorMap(vector, function) => emitValDef(sym, "mapping vector %s with function %s, type %s => %s".format(vector, quote(vm.closure), vm.mA, vm.mB))
       case vf@VectorFilter(vector, function) => emitValDef(sym, "filtering vector %s with function %s".format(vector, function))
       case vm@VectorFlatMap(vector, function) => emitValDef(sym, "flat mapping vector %s with function %s".format(vector, function))
-      case vm@VectorFlatten(v1, v2) => emitValDef(sym, "flattening vector %s with vector %s".format(v1, v2))
+      case vm@VectorFlatten(v1) => emitValDef(sym, "flattening vectors %s".format(v1))
       case gbk@VectorGroupByKey(vector) => emitValDef(sym, "grouping vector by key")
       case red@VectorReduce(vector, f) => emitValDef(sym, "reducing vector")
-      case VectorSaves(list) => stream.println("// saving all the vectors")
       case GetArgs() => emitValDef(sym, "getting the arguments")
     case _ => super.emitNode(sym, rhs)
   }
@@ -311,6 +302,14 @@ trait ScalaGenVector extends ScalaGenBase with GenericFatCodegen with SimplifyTr
 
 
 object FileOutput {
+  var x = 0
+  def writeFile(s : String) = {
+    val fw = new FileWriter("test"+x+".dot")
+    fw.write(s)
+    fw.close()
+    x+=1
+  }
+  
   val fw = new FileWriter("test.dot")
   val sw = new StringWriter()
 //  writeln("digraph {")

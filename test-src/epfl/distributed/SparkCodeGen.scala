@@ -22,8 +22,8 @@ trait SparkVectorOpsExp extends VectorOpsExp {
     }
 
     override def syms(e: Any): List[Sym[Any]] = e match { 
-    case s: ClosureNode[_,_] if s.declareClosureAsSym => syms(s.in, s.closure)// ++ super.syms(e) // super call: add case class syms (iff flag is set)
-    case s: ClosureNode[_,_] => syms(s.in)// ++ super.syms(e) // super call: add case class syms (iff flag is set)
+    case s: ClosureNode[_,_] => syms(s.in, s.closure)// ++ super.syms(e) // super call: add case class syms (iff flag is set)
+//    case s: ClosureNode[_,_] => syms(s.in)// ++ super.syms(e) // super call: add case class syms (iff flag is set)
     case s: VectorReduce[_,_]  => syms(s.in, s.closure) ++ super.syms(e) // super call: add case class syms (iff flag is set)
     case _ => super.syms(e)
   }
@@ -40,8 +40,8 @@ trait SparkVectorOpsExp extends VectorOpsExp {
 
   
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
-    case s: ClosureNode[_,_] if s.declareClosureAsSym => freqNormal(s.in)++freqHot(s.closure) 
-    case s: ClosureNode[_,_] => freqNormal(s.in) 
+    case s: ClosureNode[_,_] => freqNormal(s.in)++freqHot(s.closure) 
+//    case s: ClosureNode[_,_] => freqNormal(s.in) 
 //    case s: ClosureNode[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
     case s: VectorReduce[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
     case _ => super.symsFreq(e)
@@ -91,34 +91,21 @@ trait SparkTransformations extends VectorTransformations {
 	   }
 	}
 
-  	class MapMergeTransformation extends SimpleSingleConsumerTransformation {
-  	  
-	   def doTransformationPure(inExp : Exp[_]) = inExp match {
-            case Def(red@VectorMap(Def(gbk@VectorMap(v1, f2)),f1)) => {
-              VectorMap(v1, f2.andThen(f1))(gbk.mA,red.mB)
-            }
-            case _ => null
-	   }
-	}
-  	
-  	class MakeClosuresTransformation extends Transformation {
+  	class PullSparkDependenciesTransformation extends PullDependenciesTransformation {
 
- 	   def appliesToNode(inExp : Exp[_], t : Transformer) = {
+ 	   override def appliesToNode(inExp : Exp[_], t : Transformer) = {
 	     inExp match {
-	       case Def(s : IR.ClosureNode[_,_]) => true
-	       case s : IR.Sym[_] if IR.findDefinition(s).isDefined => true
 	       case Def(VectorReduceByKey(in, func)) => true
-	       case _ => false
+	       case _ => super.appliesToNode(inExp, t)
 	     }
 	   }
- 	   def doTransformation(inExp : Exp[_]) : Def[_] = inExp match {
- 	     case Def(s : IR.ClosureNode[_,_]) => s.declareClosureAsSym = true; s
- 	     case s : IR.Sym[_] if IR.findDefinition(s).isDefined => IR.findDefinition(s).get.rhs
+ 	   override def doTransformation(inExp : Exp[_]) : Def[_] = inExp match {
 	     case Def(r@VectorReduceByKey(in, func)) => r
- 	     case _ => null
+ 	     case _ => super.doTransformation(inExp)
  	   }
 	}
 
+  	
 }
 
 trait SparkGenVector extends ScalaGenBase with ScalaGenVector with SparkTransformations {
@@ -126,7 +113,7 @@ trait SparkGenVector extends ScalaGenBase with ScalaGenVector with SparkTransfor
 //    val IR: VectorOpsExp
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce
-	  , ComputationNode, VectorSaves}
+	  , ComputationNode}
 	import IR.{TTP, TP, SubstTransformer, IRNode}
 	import IR.{findDefinition}
 	import IR.{ClosureNode, freqHot, freqNormal, Lambda}
@@ -147,7 +134,6 @@ trait SparkGenVector extends ScalaGenBase with ScalaGenVector with SparkTransfor
       case gbk@VectorGroupByKey(vector) => emitValDef(sym, "%s.groupByKey".format(quote(vector)))
       case red@VectorReduce(vector, f) => emitValDef(sym, "%s.map(x => (x._1,x._2.reduce(%s)))".format(quote(vector), quote(red.closure)))
       case red@VectorReduceByKey(vector, f) => emitValDef(sym, "%s.reduceByKey(%s)".format(quote(vector), quote(red.closure)))
-      case VectorSaves(saves) => stream.println("// save all vectors") 
       case GetArgs() => emitValDef(sym, "sparkInputArgs.drop(1); // First argument is for spark context")
     case _ => super.emitNode(sym, rhs)
   }
@@ -159,15 +145,10 @@ trait SparkGenVector extends ScalaGenBase with ScalaGenVector with SparkTransfor
     val state = new TransformationState(currentScope0, result0)
     val transformer = new Transformer(state, List(new ReduceByKeyTransformation(), new MapMergeTransformation()))
 //    buildGraph(transformer)
-    transformer.doOneStep
-    transformer.doOneStep
+    transformer.stepUntilStable(50)
     System.err.println("Now starting to create closures")
-    transformer.transformations = List(new MakeClosuresTransformation())
-    transformer.doOneStep
-    transformer.doOneStep
-    transformer.doOneStep
-    transformer.doOneStep
-    transformer.doOneStep
+    transformer.transformations = List(new PullSparkDependenciesTransformation())
+    transformer.stepUntilStable(50)
 //    buildGraph(transformer)
 //    transformer.doOneStep
     //buildGraph(transformer)

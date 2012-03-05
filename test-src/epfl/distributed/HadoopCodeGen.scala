@@ -30,7 +30,7 @@ trait HadoopCodeGen extends ScalaGenBase with VectorTransformations {
     val IR: VectorOpsExp
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce
-	  , ComputationNode, VectorSaves}
+	  , ComputationNode}
 	import IR.{TTP, TP, SubstTransformer, IRNode}
 	import IR.{findDefinition}
 	import IR.{ClosureNode, freqHot, freqNormal, Lambda}
@@ -93,7 +93,7 @@ trait HadoopCodeGen extends ScalaGenBase with VectorTransformations {
 	def getPartnerNode(id : Int, x : Any) = {
 	  val out = x match {
 			case NewVector(_) => Read(id)
-			case VectorFlatten(_, _) => Flatten(id)
+			case VectorFlatten(_) => Flatten(id)
 			case VectorMap(Sym(x), _) => FlatMap(id)
 			case VectorFilter(Sym(x), _) => FlatMap(id)
 			case VectorFlatMap(Sym(x), _) => FlatMap(id)
@@ -103,7 +103,6 @@ trait HadoopCodeGen extends ScalaGenBase with VectorTransformations {
 			case VectorReduce(Sym(x), f) => Reduce(id)
 			case Reify(Sym(x),_,_) => Save(id)
 			case Reify(_,_,_) => Save(id)
-//			case VectorSaves(_) => AllSave(id)
 //			case _ => {println("did not find for "+id+ " "+x); null}
 			case _ => null
 //			case _ => throw new RuntimeException("TODO: Add Partner Node for "+x)
@@ -116,7 +115,7 @@ trait HadoopCodeGen extends ScalaGenBase with VectorTransformations {
 	
 	def getInputs(x : Any) : List[Int] = 
 	  x match {
-		case VectorFlatten(Sym(x1), Sym(x2)) => List(x1, x2)
+		case VectorFlatten(x1) => x1.map{case Sym(x) => x}
 		case VectorMap(Sym(x), _) => List(x)
 		case VectorFlatMap(Sym(x), _) => List(x)
 		case VectorFilter(Sym(x), _) => List(x)
@@ -126,7 +125,6 @@ trait HadoopCodeGen extends ScalaGenBase with VectorTransformations {
 		case Reify(_,_,_) => Nil
 		case VectorGroupByKey(Sym(x)) => List(x)
 		case VectorReduce(Sym(x), f) => List(x)
-		case vs@VectorSaves(saves) => vs.ids
 		case _ => Nil
 	}
 	
@@ -136,7 +134,7 @@ trait HadoopCodeGen extends ScalaGenBase with VectorTransformations {
 		case VectorFilter(vec, x) => "FlatMap (Filter)"
 		case VectorFlatMap(vec, x) => "FlatMap"
 		case NewVector(Const(name)) => "Read from %s".format(name)
-		case VectorFlatten(v1, v2) => "Flatten"
+		case VectorFlatten(v1) => "Flatten"
 		case VectorGroupByKey(Sym(x)) => "Group By Key"
 		case VectorReduce(Sym(x), f) => "Reduce"
 		//    case x : Node => x.toString.
@@ -147,7 +145,7 @@ trait HadoopCodeGen extends ScalaGenBase with VectorTransformations {
 	
 	def getOtherAttributes(x : Any) : List[(String, String)] = x match {
 		case VectorGroupByKey(_) => List(("shape", "box"), ("color","red"))
-		case VectorFlatten(_, _) => List(("shape", "triangle"))
+		case VectorFlatten(_) => List(("shape", "triangle"))
 		case NewVector(_) => List(("color","green"))
 		case Reflect(VectorSave(_,_),_,_) => List(("color","blue"))
 		case _ => Nil
@@ -370,7 +368,7 @@ class GraphState {
 
 		def exportMSCRGraph(graph : Graph[NodeType, EdgeType]) = {
 			val mscrs = createMSCRs(graph)
-					val sw = new StringWriter()
+			val sw = new StringWriter()
 			sw.write("digraph {\n")
 			var i = 0
 			for (node <- graph.nodes) {
@@ -435,12 +433,23 @@ class GraphState {
 		
   override def focusExactScopeFat[A](currentScope0: List[TTP])(result0: List[Exp[Any]])(body: List[TTP] => A): A = {
     val state = new TransformationState(currentScope0, result0)
-    val transformer = new Transformer(state, List(new SinkFlattenTransformation(), new MergeMapsTransformation()))
-//    buildGraph(transformer)
-    transformer.doOneStep
-//    buildGraph(transformer)
-    transformer.doOneStep
-    buildGraph(transformer)
+    val transformer = new Transformer(state, List(new SinkFlattenTransformation(), new MergeFlattenTransformation(), new MapMergeTransformation()))
+    makeAndExportGraph(transformer)
+    transformer.doOneTransformation
+    makeAndExportGraph(transformer)
+    transformer.doOneTransformation
+    makeAndExportGraph(transformer)
+    transformer.doOneTransformation
+    makeAndExportGraph(transformer)
+    transformer.doOneTransformation
+    makeAndExportGraph(transformer)
+    transformer.doOneTransformation
+    makeAndExportGraph(transformer)
+    transformer.doOneTransformation
+    makeAndExportGraph(transformer)
+    transformer.transformations = List(new PullDependenciesTransformation())
+    transformer.stepUntilStable(50)
+    makeAndExportGraph(transformer)
     super.focusExactScopeFat(transformer.currentState.ttps)(transformer.currentState.results)(body)
   }
 	
@@ -448,10 +457,15 @@ class GraphState {
 		val out = super.emitSource(f, className, stream)
 	  val defs = IR.globalDefs
 	  val leftDefs = defs.flatMap{x => x.rhs match {case r@Reflect(vs@VectorSave(_,_),_,_) => Some((x.sym,vs)) case _ => None}}
-      val savesSym = IR.fresh[VectorSaves](Nil)
-      FileOutput.writeln(graphState.export)
-	  graphState.writeTypes
+//      FileOutput.writeln(graphState.export)
+//	  graphState.writeTypes
 	  out
+	}
+	
+	def makeAndExportGraph(transformer : Transformer) = {
+	  GraphState.remove()
+	  buildGraph(transformer)
+	  FileOutput.writeFile(graphState.export)
 	}
 	
 	def buildGraph(transformer : Transformer){
