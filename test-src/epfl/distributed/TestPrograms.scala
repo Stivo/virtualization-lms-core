@@ -17,7 +17,6 @@ import java.io.StringWriter
 trait VectorsProg extends VectorImplOps {
   
   // why need of unit in this example?
-  // why is the code in the CodeGen lifted???
   // How to implement map in terms of flatMap?
   // use ParallelDo instead of flatMap? Has notion of emitter
   
@@ -94,7 +93,7 @@ trait VectorsProg extends VectorImplOps {
   def flatten( x : Rep[Unit]) = {
     val words1 = Vector("words1")
     val words2 = Vector("words2")
-    (words1++words2).map(_+"").map(_+"").save("all words")
+    (((words1++words2).map(_+""))++(Vector("words3"))).save("all words")
     unit(())
   }
   

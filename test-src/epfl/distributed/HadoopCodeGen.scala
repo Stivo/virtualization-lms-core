@@ -31,7 +31,7 @@ trait HadoopCodeGen extends ScalaGenBase with VectorTransformations {
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce
 	  , ComputationNode}
-	import IR.{TTP, TP, SubstTransformer, IRNode}
+	import IR.{TTP, TP, SubstTransformer}
 	import IR.{findDefinition}
 	import IR.{ClosureNode, freqHot, freqNormal, Lambda}
 	
@@ -415,9 +415,9 @@ class GraphState {
 		  }
 		}
 	
-	
 		override def toString() = "GraphState "
 	}
+
 	object GraphState extends ThreadLocal[GraphState]{
 		override def get = {
 		  var out = super.get
@@ -452,16 +452,7 @@ class GraphState {
     makeAndExportGraph(transformer)
     super.focusExactScopeFat(transformer.currentState.ttps)(transformer.currentState.results)(body)
   }
-	
-	override def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {
-		val out = super.emitSource(f, className, stream)
-	  val defs = IR.globalDefs
-	  val leftDefs = defs.flatMap{x => x.rhs match {case r@Reflect(vs@VectorSave(_,_),_,_) => Some((x.sym,vs)) case _ => None}}
-//      FileOutput.writeln(graphState.export)
-//	  graphState.writeTypes
-	  out
-	}
-	
+		
 	def makeAndExportGraph(transformer : Transformer) = {
 	  GraphState.remove()
 	  buildGraph(transformer)
@@ -477,12 +468,6 @@ class GraphState {
 	      }
 	  }.map(IR.findOrCreateDefinition(_,Nil))
 	  for (tp <- defs) {
-	    val doThis = tp.rhs match {
-	      case x : IRNode => x.alive
-	      case Reflect(x : IRNode,_,_) => x.alive
-	      case _ => true
-	    }
-	    if (doThis)
 	    updateGraph(tp.sym, tp.rhs)
 	  }
 	}
@@ -503,10 +488,6 @@ class GraphState {
 			  }
 			}
 		}
-	}
-
-	override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter): Unit = {
-		super.emitNode(sym, rhs)
 	}
 
 }

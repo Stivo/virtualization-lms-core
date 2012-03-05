@@ -5,7 +5,7 @@ package distributed
 import scala.virtualization.lms.common.ScalaGenBase
 import java.io.PrintWriter
 
-trait SparkProgram extends VectorOpsExp with VectorImplOps with SparkVectorOpsExp with SparkVectorOpsExpOpt {
+trait SparkProgram extends VectorOpsExp with VectorImplOps with SparkVectorOpsExp {
   
 }
 
@@ -24,10 +24,11 @@ trait SparkVectorOpsExp extends VectorOpsExp {
     override def syms(e: Any): List[Sym[Any]] = e match { 
     case s: ClosureNode[_,_] => syms(s.in, s.closure)// ++ super.syms(e) // super call: add case class syms (iff flag is set)
 //    case s: ClosureNode[_,_] => syms(s.in)// ++ super.syms(e) // super call: add case class syms (iff flag is set)
+    case red : VectorReduceByKey[_,_] => syms(red.in, red.closure)
     case s: VectorReduce[_,_]  => syms(s.in, s.closure) ++ super.syms(e) // super call: add case class syms (iff flag is set)
     case _ => super.syms(e)
   }
-    
+
 //   override def readSyms(e: Any): List[Sym[Any]] = e match { //TR FIXME: check this is actually correct
 //    case s: ClosureNode[_,_]  => syms(s.closure, s.in) ++ super.syms(e)// super call: add case class syms (iff flag is set)
 //    case _ => super.readSyms(e)
@@ -41,39 +42,12 @@ trait SparkVectorOpsExp extends VectorOpsExp {
   
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
     case s: ClosureNode[_,_] => freqNormal(s.in)++freqHot(s.closure) 
+    case red : VectorReduceByKey[_,_] => freqHot(red.closure) ++ freqNormal(red.in)
 //    case s: ClosureNode[_,_] => freqNormal(s.in) 
 //    case s: ClosureNode[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
     case s: VectorReduce[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
     case _ => super.symsFreq(e)
   }
-}
-
-
-trait SparkVectorOpsExpOpt extends SparkVectorOpsExp {
-//  val IR : VectorOpsExp
-//  import IR.{VectorMap}
-//  def compose[A, B, C](f1 : A => B, f2 : B=>C) : A => C = {x : A => f2(f1(x)) }
-
-//  override def vector_reduce[K: Manifest, V : Manifest](vector : Exp[Vector[(K,Iterable[V])]], f : (Exp[V], Exp[V]) => Exp[V] ) = vector match {
-//    case Def(VectorGroupByKey(in)) => VectorReduceByKey(in, f)
-//    case _ => super.vector_reduce(vector, f)
-//  }
-
-//  override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A] => Exp[B]) = vector match {
-//	case Def(vm@VectorMap(in, f2)) => VectorMap(in, f2.andThen(f))(mtype(manifest[vm.mA]),manifest[B])
-//	case _ => super.vector_map(vector, f)
-//  }
-  
-   override def syms(e: Any): List[Sym[Any]] = e match {
-     case red : VectorReduceByKey[_,_] => syms(red.in, red.closure)
-    case _ => super.syms(e)
-  }
-      
-  override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
-     case red : VectorReduceByKey[_,_] => freqHot(red.closure) ++ freqNormal(red.in)
-    case _ => super.symsFreq(e)
-  }
-  
 }
 
 trait SparkTransformations extends VectorTransformations {
@@ -110,15 +84,14 @@ trait SparkTransformations extends VectorTransformations {
 
 trait SparkGenVector extends ScalaGenBase with ScalaGenVector with SparkTransformations {
   
-//    val IR: VectorOpsExp
+	val IR: SparkVectorOpsExp
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce
 	  , ComputationNode}
-	import IR.{TTP, TP, SubstTransformer, IRNode}
+	import IR.{TTP, TP, SubstTransformer}
 	import IR.{findDefinition}
 	import IR.{ClosureNode, freqHot, freqNormal, Lambda}
 
-  val IR: SparkVectorOpsExp
 	import IR.{GetArgs}
 	import IR.{VectorReduceByKey}
 	import IR.{findDefinition, fresh, reifyEffects, reifyEffectsHere,toAtom}
@@ -146,7 +119,6 @@ trait SparkGenVector extends ScalaGenBase with ScalaGenVector with SparkTransfor
     val transformer = new Transformer(state, List(new ReduceByKeyTransformation(), new MapMergeTransformation()))
 //    buildGraph(transformer)
     transformer.stepUntilStable(50)
-    System.err.println("Now starting to create closures")
     transformer.transformations = List(new PullSparkDependenciesTransformation())
     transformer.stepUntilStable(50)
 //    buildGraph(transformer)

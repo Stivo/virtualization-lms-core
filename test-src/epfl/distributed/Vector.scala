@@ -18,8 +18,6 @@ import scala.reflect.SourceContext
 import scala.collection.mutable.Buffer
 
 trait Vector[A] {
-  //val elementType = manifest[A]
-  //val elementType : Class[A]
 
 }
 
@@ -38,7 +36,6 @@ trait VectorBaseExp extends VectorBase
   with MathOpsExp with CastingOpsExp with ObjectOpsExp with ArrayOpsExp with RangeOpsExp
   with StructExp with FatExpressions with LoopsFatExp with IfThenElseFatExp
   with StringAndNumberOpsExp
-//trait VectorBaseCodeGenPkg extends ScalaGen
   
 trait VectorBaseCodeGenPkg extends ScalaGenDSLOps
   with SimplifyTransform
@@ -58,9 +55,8 @@ trait VectorOps extends VectorBase {
       def apply(file : Rep[String]) = vector_new[String](file)
       def getArgs = get_args()
     }
+    
     implicit def repVecToVecOps[A:Manifest](vector: Rep[Vector[A]]) = new vecOpsCls(vector)
-    implicit def repVecToVecIterableTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,Iterable[V])]]) = new vecIterableTupleOpsCls(x)
-    implicit def repVecToVecTupleOps[K: Manifest, V : Manifest](x: Rep[Vector[(K,V)]]) = new vecTupleOpsCls(x)
     class vecOpsCls[A:Manifest](vector: Rep[Vector[A]]) {
         def flatMap[B : Manifest](f : Rep[A] => Rep[Iterable[B]]) = vector_flatMap(vector, f)
     	def map[B:Manifest](f: Rep[A] => Rep[B]) = vector_map(vector,f)
@@ -69,11 +65,13 @@ trait VectorOps extends VectorBase {
 		def ++(vector2 : Rep[Vector[A]]) = vector_++(vector, vector2)
     }
 
+    implicit def repVecToVecIterableTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,Iterable[V])]]) = new vecIterableTupleOpsCls(x)
     class vecIterableTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,Iterable[V])]]) {
       def reduce(f : (Rep[V], Rep[V]) => Rep[V] ) = vector_reduce[K, V](x, f)
     }
     
-   class vecTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,V)]]) {
+    implicit def repVecToVecTupleOps[K: Manifest, V : Manifest](x: Rep[Vector[(K,V)]]) = new vecTupleOpsCls(x)
+    class vecTupleOpsCls[K: Manifest, V : Manifest](x: Rep[Vector[(K,V)]]) {
       def groupByKey = vector_groupByKey[K, V](x)
     }
 
@@ -97,27 +95,12 @@ object FakeSourceContext {
 trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
   def toAtom2[T:Manifest](d: Def[T])(implicit ctx: SourceContext): Exp[T] = super.toAtom(d)
   
-  trait IRNode {
-    var alive = true
-    def reads = {updateReadBy; _readBy.size}
-    private var _readBy = Buffer[IRNode]()
-    def addRead(reader : IRNode) {
-      _readBy += reader
-      updateReadBy
-    }
-    def updateReadBy {
-      _readBy = _readBy.filter(_.alive)
-    }
-  }
-  
-	trait ClosureNode[A, B] extends IRNode {
-//	  var declareClosureAsSym = false
+	trait ClosureNode[A, B] {
       val in : Exp[Vector[_]]
 	  val func : Exp[A] => Exp[B]
 	  def getClosureTypes : (Manifest[A], Manifest[B])
 	  
 	  lazy val closure = {
-        System.err.println("           Creating a closure for "+this)
         VectorOpsExp.this.doLambda(func)(getClosureTypes._1, getClosureTypes._2, FakeSourceContext()) 
       }
 
@@ -142,18 +125,10 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
       def getTypes = (manifest[Nothing], manifest[Vector[A]])
     }
     
-    def addReadBy(reader : IRNode, read : Exp[Vector[_]]) {
-      read match {
-        case Def(x : IRNode) => x.addRead(reader)
-        case _ => 
-      }
-    }
-    
     def makeVectorManifest[B : Manifest] = manifest[Vector[B]]
     
     case class VectorMap[A : Manifest, B : Manifest](in : Exp[Vector[A]], func : Exp[A] => Exp[B]) //, convert : Exp[Int] => Exp[A])
        extends Def[Vector[B]] with ComputationNodeTyped[Vector[A],Vector[B]] with ClosureNode[A, B]{
-      addReadBy(this, in)
    	  val mA = manifest[A]
       val mB = manifest[B]
    	  def getClosureTypes = (mA, mB)
@@ -177,7 +152,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     }
    
     case class VectorFlatten[A : Manifest](vectors : List[Exp[Vector[A]]]) extends Def[Vector[A]] 
-    		with PreservingTypeComputation[Vector[A]] with IRNode {
+    		with PreservingTypeComputation[Vector[A]] {
       val mA = manifest[A]
       def getType = manifest[Vector[A]]
     }
@@ -223,9 +198,7 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     override def vector_groupByKey[K: Manifest, V : Manifest](vector : Exp[Vector[(K,V)]]) = VectorGroupByKey(vector)
     
     override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Exp[A] = {
-        
         e match {
-    //case Copy(a) => f(a)
         case flat@VectorFlatten(list) => toAtom(VectorFlatten(f(list))(flat.mA))
         case vm@NewVector(vector) => toAtom(NewVector(f(vector))(vm.mA))(mtype(vm.mA), implicitly[SourceContext])
 	    case vm@VectorMap(vector,func) => toAtom(VectorMap(f(vector), f(func))(vm.mA, vm.mB))(vm.getTypes._2, implicitly[SourceContext])
@@ -250,26 +223,11 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     case _ => super.syms(e)
   }
     
-   override def readSyms(e: Any): List[Sym[Any]] = e match { //TR FIXME: check this is actually correct
-//    case VectorSaves => syms(VectorSaves.saves)
-    case s: VectorMap[_,_]  => syms(s.func, s.in) ++ super.syms(e) // super call: add case class syms (iff flag is set)
-    case VectorFlatten(x) => syms(x) ++ super.syms(e)
-    case _ => super.readSyms(e)
-  }
-  
-  override def boundSyms(e: Any): List[Sym[Any]] = e match {
-//    case VectorSaves => syms(VectorSaves.saves)
-    case s: VectorMap[_,_]  => effectSyms(s.func, s.in)
-    case VectorFlatten(x) => effectSyms(x)
-    case _ => super.boundSyms(e)
-  }
-
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
      case s: ClosureNode[_,_]  => freqHot(s.closure) ++ freqNormal(s.in) 
      case VectorFlatten(x) => freqNormal(x)
     case NewVector(arg) => freqNormal(arg)
     case VectorSave(vec, path) => freqNormal(vec, path)
-//    case s: VectorMap[_,_]  => freqHot(s.func)++freqNormal(s.in)
     case _ => super.symsFreq(e)
   }
   

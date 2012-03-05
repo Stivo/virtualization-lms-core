@@ -2,7 +2,7 @@ package scala.virtualization.lms
 package epfl.distributed
 
 import scala.virtualization.lms.common.ScalaGenBase
-import common.BooleanOpsExp
+import common.BooleanOps
 import scala.collection.mutable
 
 trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
@@ -11,7 +11,7 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
 	import IR.{NewVector, VectorSave, VectorMap, VectorFilter, VectorFlatMap, VectorFlatten, VectorGroupByKey, VectorReduce, 
 	  ComputationNode}
-	import IR.{TTP, TP, SubstTransformer, IRNode, ThinDef}
+	import IR.{TTP, TP, SubstTransformer, ThinDef}
 	import IR.{findDefinition}
 	import IR.{ClosureNode, freqHot, freqNormal, Lambda}
 	
@@ -208,18 +208,29 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 	   }
 	}
 
-//	class FilterMergeTransformation extends SimpleSingleConsumerTransformation with BooleanOpsExp {
-//  	  
-//	   def composePredicates[A : Manifest](p1 : Exp[A] => Exp[Boolean], p2 : Exp[A] => Exp[Boolean]) = { a : Exp[A] => BooleanAnd(p1(a),p2(a))}
+	// TODO does not seem easily possible
+//	trait ComposePredicate {
+//	  def composePredicates[A : Manifest](p1 : Exp[A] => Exp[Boolean], p2 : Exp[A] => Exp[Boolean]) : Exp[A] => Exp[Boolean]
+//	}
+//	
+//	trait ComposePredicateBooleanOpsExp extends BooleanOps {
+//	  def composePredicates[A : Manifest](p1 : Exp[A] => Exp[Boolean], p2 : Exp[A] => Exp[Boolean]) : Exp[A] => Exp[Boolean] 
+//	  = { a : Exp[A] => infix_&&(p1(a),p2(a))}
+//	}
+//	
+//	trait FilterMergeTransformationHack extends SimpleSingleConsumerTransformation with ComposePredicate {
+////		this : {def composePredicates[A : Manifest](p1 : Exp[A] => Exp[Boolean], p2 : Exp[A] => Exp[Boolean]) : Exp[A] => Exp[Boolean]}
+////		=>
 //	   def doTransformationPure(inExp : Exp[_]) = inExp match {
 //            case Def(vf1@VectorFilter(Def(vf2@VectorFilter(v1, f1)),f2)) => {
-//              null
-////              VectorFilter(v1, composePredicates(f1,f2)(vf2.mA))(vf2.mA)
+//              VectorFilter(v1, composePredicates(f1,f2)(vf2.mA))(vf2.mA)
 //            }
 //            case _ => null
 //	   }
 //	}
-
+//
+//	class FilterMergeTransformation extends ComposePredicateBooleanOpsExp with FilterMergeTransformationHack 
+	
 	class PullDependenciesTransformation extends Transformation {
 
 	  var _doneNodes = Set[Any]()
