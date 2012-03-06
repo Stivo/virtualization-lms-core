@@ -14,25 +14,59 @@ import java.io.File
 import java.io.FileWriter
 import java.io.StringWriter
 
-trait VectorsProg extends VectorImplOps {
+trait ComplexBase extends Base {
+  
+  class Complex
+  
+  def Complex(re: Rep[Double], im: Rep[Double]): Rep[Complex]
+  def infix_re(c: Rep[Complex]): Rep[Double]
+  def infix_im(c: Rep[Complex]): Rep[Double]
+  def infix_abs(c: Rep[Complex]): Rep[Double]
+}
+
+trait ComplexStructExp extends ComplexBase with StructExp with PrimitiveOps {
+
+  def Complex(re: Rep[Double], im: Rep[Double]) = struct[Complex](List("Complex"), Map("re"->re, "im"->im, "abs" -> im))
+  def infix_re(c: Rep[Complex]): Rep[Double] = field[Double](c, "re")
+  def infix_im(c: Rep[Complex]): Rep[Double] = field[Double](c, "im")
+  def infix_abs(c: Rep[Complex]): Rep[Double] = field[Double](c, "abs")
+}
+trait VectorsProg extends VectorImplOps with ComplexBase {
   
   // why need of unit in this example?
   // How to implement map in terms of flatMap?
   // use ParallelDo instead of flatMap? Has notion of emitter
 //  
   def parse( s: Rep[String]) = Integer.parseInt(s)
+  
+
+  
 //  
 //  def isNumber(s : Rep[String]) = s.matches("\\d+")
 //  
+//  class A {
+//    val line : Int = 1
+//  }
+  
   def simple(x : Rep[Unit]) = {
-    val words1 = Vector("words1")
+    val words1 = Vector(unit("words1"))
 //    words1.filter(_.matches("\\d+"))
-    val parsed = words1.map(parse)
+
+    val parsed = words1.map{
+      x => 
+        Complex(unit(3),parse(x))
+//        val x2 = x1.re + 3
+//        x2
+    }
 //    .filter(_>4)
 //    parsed.save("parsed")
 //    parsed.map{x => 2*x}
 //    .map(_+"")
-    .save("doubled")
+//    parsed.map(x => x.abs+3)
+//    .save(unit("doubled"))
+    parsed.map(x => (x.im, x.re))
+//    .map(x => (x._1.im, x._2))
+    .save("asdf")
 //    parsed.map{x => x+1}.save("incremented")
 //    .map(_+"asdf")
 //    .save("words")
@@ -145,18 +179,18 @@ class TestVectors extends FileDiffSuite {
       val writer = new StringWriter()
       val printer = new PrintWriter(writer)
       
-      val dslSpark = new VectorsProg with SparkProgram
+      val dslSpark = new VectorsProg with SparkProgram with ComplexStructExp
       //      val codegenDeps = new HadoopGen { val IR: dsl.type = dsl }
 //      codegenDeps.emitSource(dsl.simple, "g", new PrintWriter(System.out))
       
-      val codegenSpark = new SparkGen { val IR: dslSpark.type = dslSpark }
+      val codegenSpark = new SparkGen with LivenessOpt { val IR: dslSpark.type = dslSpark }
       codegenSpark.emitSource(dslSpark.simple, "Spark", printer)
       println(writer.toString)
       
-      val dest = "/home/stivo/master/spark/examples/src/main/scala/spark/examples/SparkGenerated.scala"
-      val fw = new FileWriter(dest)
-      fw.write(writer.toString)
-      fw.close
+//      val dest = "/home/stivo/master/spark/examples/src/main/scala/spark/examples/SparkGenerated.scala"
+//      val fw = new FileWriter(dest)
+//      fw.write(writer.toString)
+//      fw.close
       
       println("-- end")
 //    }

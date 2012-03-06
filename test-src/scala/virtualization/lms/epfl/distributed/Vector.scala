@@ -9,13 +9,12 @@ import util.OverloadHack
 import java.io.PrintWriter
 import java.io.FileOutputStream
 import java.io.PrintWriter
-import scala.collection.mutable.HashMap
 import internal.GraphVizExport
 import java.io.File
 import java.io.FileWriter
 import java.io.StringWriter
 import scala.reflect.SourceContext
-import scala.collection.mutable.Buffer
+import scala.collection.mutable
 
 trait Vector[A] {
 
@@ -35,7 +34,7 @@ trait VectorBaseExp extends VectorBase
   with BooleanOpsExp with PrimitiveOpsExp with MiscOpsExp with TupleOpsExp
   with MathOpsExp with CastingOpsExp with ObjectOpsExp with ArrayOpsExp with RangeOpsExp
   with StructExp with FatExpressions with LoopsFatExp with IfThenElseFatExp
-  with StringAndNumberOpsExp
+  with StringAndNumberOpsExp with StructFatExpOptCommon
   
 trait VectorBaseCodeGenPkg extends ScalaGenDSLOps
   with SimplifyTransform
@@ -43,7 +42,7 @@ trait VectorBaseCodeGenPkg extends ScalaGenDSLOps
   with ScalaGenImplicitOps with ScalaGenNumericOps with ScalaGenOrderingOps with ScalaGenStringOps
   with ScalaGenBooleanOps with ScalaGenPrimitiveOps with ScalaGenMiscOps with ScalaGenTupleOps
   with ScalaGenMathOps with ScalaGenCastingOps with ScalaGenObjectOps with ScalaGenArrayOps with ScalaGenRangeOps
-  with ScalaGenStruct with GenericFatCodegen
+  with ScalaGenFatStruct with GenericFatCodegen
   with StringAndNumberOpsCodeGen
   { val IR: VectorOpsExp }
 
@@ -95,7 +94,13 @@ object FakeSourceContext {
 trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
   def toAtom2[T:Manifest](d: Def[T])(implicit ctx: SourceContext): Exp[T] = super.toAtom(d)
   
-	trait ClosureNode[A, B] {
+	trait VectorNode {
+	  val directFieldReads = mutable.HashSet[String]()
+	  val successorFieldReads = mutable.HashSet[String]()
+	  def allFieldReads = directFieldReads ++ successorFieldReads
+    }
+  
+	trait ClosureNode[A, B] extends VectorNode {
       val in : Exp[Vector[_]]
 	  val func : Exp[A] => Exp[B]
 	  def getClosureTypes : (Manifest[A], Manifest[B])
