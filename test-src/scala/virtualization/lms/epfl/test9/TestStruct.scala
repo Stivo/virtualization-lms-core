@@ -118,6 +118,7 @@ class TestStruct extends FileDiffSuite {
           var c = Complex(x.toDouble, 0)
           c = c + Complex(0,x.toDouble)
           print(c)
+          print(c)
         }
       }
       new Prog with Impl

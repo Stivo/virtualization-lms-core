@@ -30,7 +30,7 @@ trait VectorsProg extends VectorImplOps {
     val parsed = words1.map(parse)
 //    .filter(_>4)
 //    parsed.save("parsed")
-    parsed.map{x => 2*x}
+//    parsed.map{x => 2*x}
 //    .map(_+"")
     .save("doubled")
 //    parsed.map{x => x+1}.save("incremented")

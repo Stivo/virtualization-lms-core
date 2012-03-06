@@ -1,4 +1,5 @@
-#Tue Mar 06 12:26:37 CET 2012
+#Tue Mar 06 14:09:32 CET 2012
+P=continuations\:enable
 Xcheck-null=false
 Xcheckinit=false
 Xdisable-assertions=false
@@ -9,7 +10,7 @@ Xfuture=false
 Xlog-implicits=false
 Xmigration=false
 Xno-uescape=false
-Xpluginsdir=/home/stivo/progs/eclipse/configuration/org.eclipse.osgi/bundles/364/1/.cp/lib
+Xpluginsdir=misc/scala-devel/plugins
 Ybuild-manager-debug=false
 Yno-generic-signatures=false
 Yno-imports=false
@@ -25,7 +26,7 @@ buildmanager=sbt
 compileorder=Mixed
 deprecation=false
 eclipse.preferences.version=1
-explaintypes=false
+explaintypes=true
 g=vars
 no-specialization=false
 nowarn=false
@@ -34,4 +35,4 @@ scala.compiler.additionalParams=-Yvirtualize
 scala.compiler.useProjectSettings=true
 target=jvm-1.5
 unchecked=false
-verbose=false
+verbose=true
