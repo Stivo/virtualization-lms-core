@@ -90,7 +90,7 @@ trait SparkVectorOpsExp extends VectorOpsExp {
 //  	
 //}
 
-trait SparkGenVector extends ScalaGenBase with ScalaGenVector {
+trait SparkGenVector extends ScalaGenBase with ScalaGenVector with VectorTransformations {
   
 	val IR: SparkVectorOpsExp
 	import IR.{Sym, Def, Exp, Reify, Reflect, Const}
@@ -149,17 +149,21 @@ trait SparkGenVector extends ScalaGenBase with ScalaGenVector {
     }
   }
   
-    override def focusExactScopeFat[A](currentScope0: List[TTP])(result0: List[Block[Any]])(body: List[TTP] => A): A = {
-//    val state = new TransformationState(currentScope0, result0)
-//    val transformer = new Transformer(state, List(new MapMergeTransformation()))
+    override def focusExactScopeFat[A](currentScope0In: List[TTP])(result0B: List[Block[Any]])(body: List[TTP] => A): A = {
+      var result0 = result0B.map(getBlockResultFull)
+      var state = new TransformationState(currentScope0In, result0)
+      val transformer = new Transformer(state, List(new MapMergeTransformation()))
 ////    buildGraph(transformer)
-//    transformer.stepUntilStable(50)
-//    transformer.transformations = List(new PullDependenciesTransformation())
-//    transformer.stepUntilStable(50)
+    transformer.stepUntilStable(50)
+    transformer.transformations = List(new PullDependenciesTransformation())
+    transformer.stepUntilStable(50)
 //    buildGraph(transformer)
 //    transformer.doOneStep
     //buildGraph(transformer)
-      
+      state = transformer.currentState
+      val currentScope0 = state.ttps
+      result0 = state.results
+    
       def getValidOptions[A](l : Iterable[Option[A]]) = l.filter(_.isDefined).map(_.get)
       
 	  val closureNodes = getValidOptions[ClosureNode[_,_]](currentScope0.map(ClosureNode.unapply))
@@ -201,7 +205,7 @@ trait SparkGenVector extends ScalaGenBase with ScalaGenVector {
       println("All reads of vector nodes ")
       vectorNodes.foreach{x => println(x+" "+x.allFieldReads)}
       println
-    super.focusExactScopeFat(currentScope0)(result0)(body)
+    super.focusExactScopeFat(currentScope0)(result0.map(IR.Block(_)))(body)
   }
   
   override def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {

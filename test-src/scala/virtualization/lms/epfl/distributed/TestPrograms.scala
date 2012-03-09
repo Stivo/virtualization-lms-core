@@ -54,17 +54,17 @@ trait VectorsProg extends VectorImplOps with ComplexBase {
 
     val parsed = words1.map{
       x => 
-        Complex(unit(3),parse(x))
+        Complex(unit(3),Integer.parseInt(x))
 //        val x2 = x1.re + 3
 //        x2
     }
-//    .filter(_>4)
+    .filter(_.im>4)
 //    parsed.save("parsed")
 //    parsed.map{x => 2*x}
 //    .map(_+"")
 //    parsed.map(x => x.abs+3)
 //    .save(unit("doubled"))
-    parsed.map(x => (x.im, x.re))
+    parsed.map(x => x.im)
 //    .map(x => (x._1.im, x._2))
     .save("asdf")
 //    parsed.map{x => x+1}.save("incremented")
