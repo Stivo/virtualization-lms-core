@@ -58,7 +58,7 @@ trait VectorsProg extends VectorImplOps with ComplexBase {
 //        val x2 = x1.re + 3
 //        x2
     }
-    .filter(_.im>4)
+//    .filter(_.im>4)
 //    parsed.save("parsed")
 //    parsed.map{x => 2*x}
 //    .map(_+"")

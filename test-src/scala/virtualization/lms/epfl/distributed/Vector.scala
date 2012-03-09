@@ -16,7 +16,7 @@ import java.io.StringWriter
 import scala.reflect.SourceContext
 import scala.collection.mutable
 
-trait Vector[A] {
+trait Vector[+A] {
 
 }
 

@@ -152,11 +152,11 @@ trait SparkGenVector extends ScalaGenBase with ScalaGenVector with VectorTransfo
     override def focusExactScopeFat[A](currentScope0In: List[TTP])(result0B: List[Block[Any]])(body: List[TTP] => A): A = {
       var result0 = result0B.map(getBlockResultFull)
       var state = new TransformationState(currentScope0In, result0)
-      val transformer = new Transformer(state, List(new MapMergeTransformation()))
+      val transformer = new Transformer(state)
 ////    buildGraph(transformer)
-    transformer.stepUntilStable(50)
-    transformer.transformations = List(new PullDependenciesTransformation())
-    transformer.stepUntilStable(50)
+      transformer.doTransformation(new PullDependenciesTransformation(), 500)
+//      transformer.doTransformation(new PullDependenciesTransformation(), 20)
+      
 //    buildGraph(transformer)
 //    transformer.doOneStep
     //buildGraph(transformer)

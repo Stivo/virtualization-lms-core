@@ -14,6 +14,7 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 	import IR.{TTP, TP, SubstTransformer, ThinDef}
 	import IR.{findDefinition}
 	import IR.{ClosureNode, freqHot, freqNormal, Lambda}
+	import IR.{Struct}
 	
 	class MarkerTransformer( val transformation : Transformation, val transformer : Transformer) extends SubstTransformer {
 		private var toDo = mutable.HashSet[Exp[_]]()
@@ -26,7 +27,13 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 		def getTodo = toDo.toSet
 	}
 	
-	class Transformer(var currentState : TransformationState, var transformations : List[Transformation]) {
+	class Transformer(var currentState : TransformationState, var transformations : List[Transformation] = Nil) {
+	  
+	  def doTransformation(transformation : Transformation, limit : Int = 1) {
+	    transformations = List(transformation)
+	    stepUntilStable(limit)
+	  }
+	  
 	  def stepUntilStable(limit : Int = 20) = {
 	    var i = 0
 	    do {
