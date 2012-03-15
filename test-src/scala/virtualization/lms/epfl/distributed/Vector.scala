@@ -25,7 +25,7 @@ trait VectorBase extends Base with LiftAll
   with ImplicitOps with NumericOps with OrderingOps with StringOps
   with BooleanOps with PrimitiveOps with MiscOps with TupleOps
   with MathOps with CastingOps with ObjectOps with ArrayOps
-  with StringAndNumberOps
+  with StringAndNumberOps 
 
 trait VectorBaseExp extends VectorBase
   with DSLOpsExp
@@ -34,10 +34,10 @@ trait VectorBaseExp extends VectorBase
   with BooleanOpsExp with PrimitiveOpsExp with MiscOpsExp with TupleOpsExp
   with MathOpsExp with CastingOpsExp with ObjectOpsExp with ArrayOpsExp with RangeOpsExp
   with StructExp with FatExpressions with LoopsFatExp with IfThenElseFatExp
-  with StringAndNumberOpsExp with StructFatExpOptCommon
+  with StringAndNumberOpsExp with StructFatExpOptCommon 
   
 trait VectorBaseCodeGenPkg extends ScalaGenDSLOps
-  with SimplifyTransform
+  with SimplifyTransform with ScalaGenIfThenElseFat
   with ScalaGenEqual with ScalaGenIfThenElse with ScalaGenVariables with ScalaGenWhile with ScalaGenFunctions
   with ScalaGenImplicitOps with ScalaGenNumericOps with ScalaGenOrderingOps with ScalaGenStringOps
   with ScalaGenBooleanOps with ScalaGenPrimitiveOps with ScalaGenMiscOps with ScalaGenTupleOps
@@ -46,6 +46,7 @@ trait VectorBaseCodeGenPkg extends ScalaGenDSLOps
   with StringAndNumberOpsCodeGen
   { val IR: VectorOpsExp }
 
+//trait VectorGenBase with GenericFatCodegen with SimplifyTransform with FatScheduling
 
 trait VectorOps extends VectorBase {
   //this: SimpleVector =>
@@ -189,6 +190,8 @@ trait VectorOpsExp extends VectorOps with VectorBaseExp with FunctionsExp {
     
     case class GetArgs extends Def[Array[String]]
     
+    case class Narrowing(struct : Vector[Rep[SimpleStruct[_]]], fields : List[String]) extends Def[Vector[Rep[SimpleStruct[_]]]]
+
     override def get_args() = GetArgs()
     override def vector_new[A: Manifest](file : Exp[String]) = NewVector[A](file)
     override def vector_map[A : Manifest, B : Manifest](vector : Exp[Vector[A]], f : Exp[A] => Exp[B]) = VectorMap[A, B](vector, f)
@@ -246,7 +249,7 @@ trait VectorImplOps extends VectorOps with FunctionsExp  {
   
 }
 
-trait ScalaGenVector extends ScalaGenBase with GenericFatCodegen with SimplifyTransform with FatScheduling {
+trait ScalaGenVector extends ScalaGenBase with VectorBaseCodeGenPkg  {
   val IR: VectorOpsExp
   import IR._
     override def emitNode(sym: Sym[Any], rhs: Def[Any])(implicit stream: PrintWriter) = rhs match {

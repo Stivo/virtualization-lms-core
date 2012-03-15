@@ -236,6 +236,40 @@ trait VectorTransformations extends ScalaGenBase with ScalaGenVector {
 //	}
 //
 //	class FilterMergeTransformation extends ComposePredicateBooleanOpsExp with FilterMergeTransformationHack 
+  def narrow[A : Manifest](fields : List[String]) = {in : IR.SimpleStruct[A] => 
+//    in match {
+//      case Def(IR.SimpleStruct(tag, elems)) => IR.toAtom2(new IR.SimpleStruct(tag, elems.filterKeys(fields.contains)))
+//      case _ => in
+//    }
+    new IR.SimpleStruct[A](in.tag, in.elems.filterKeys(fields.contains))
+  }
+
+  def narrow2[A : Manifest](fields : List[String]) = {in : IR.Rep[_] => 
+    in match {
+      case Def(IR.SimpleStruct(tag, elems)) => IR.toAtom2(new IR.SimpleStruct[A](tag, elems.filterKeys(fields.contains)))
+      case _ => in
+    }
+  }
+
+  
+	class Narrow2Transformation extends SimpleTransformation {
+	   def doTransformationPure(inExp : Exp[_]) = inExp match {
+	     case d@Def(IR.SimpleStruct(tag, elems)) =>
+	       IR.SimpleStruct(tag, elems.filterKeys(_=="im"))
+         case _ => null
+	   }
+	}
+	
+	class Narrow3Transformation extends SimpleTransformation {
+	   def doTransformationPure(inExp : Exp[_]) = inExp match {
+	     case Def(vm@VectorMap(in, f)) => {
+	    	 val narrower = narrow2(List("im"))(vm.mB)
+//	    	 val lifted = IR.toAtom2(narrower)
+	    	 VectorMap(in, f.andThen(narrower))(vm.mA, vm.mB)
+	     }
+         case _ => null
+	   }
+	}
 	
 	class PullDependenciesTransformation extends Transformation {
 

@@ -150,62 +150,90 @@ trait SparkGenVector extends ScalaGenBase with ScalaGenVector with VectorTransfo
   }
   
     override def focusExactScopeFat[A](currentScope0In: List[TTP])(result0B: List[Block[Any]])(body: List[TTP] => A): A = {
-      var result0 = result0B.map(getBlockResultFull)
-      var state = new TransformationState(currentScope0In, result0)
-      val transformer = new Transformer(state)
-////    buildGraph(transformer)
-      transformer.doTransformation(new PullDependenciesTransformation(), 500)
-//      transformer.doTransformation(new PullDependenciesTransformation(), 20)
-      
-//    buildGraph(transformer)
-//    transformer.doOneStep
-    //buildGraph(transformer)
-      state = transformer.currentState
-      val currentScope0 = state.ttps
-      result0 = state.results
-    
-      def getValidOptions[A](l : Iterable[Option[A]]) = l.filter(_.isDefined).map(_.get)
-      
-	  val closureNodes = getValidOptions[ClosureNode[_,_]](currentScope0.map(ClosureNode.unapply))
-	  def vectorNodes = getValidOptions[VectorNode](currentScope0.map{x => x match {case TTPDef(vn : VectorNode) => Some(vn); case _ => None}})
-      def findClosureNodeWithLambda(l : Lambda[_,_]) = {
-//        val closureNodes = getValidOptions[ClosureNode[_,_]](currentScope0.map{_ match { case TTP(_,ThinDef(cn : ClosureNode[_,_])) => Some(cn); case _ => None}})
-        val sym = IR.findDefinition(l).get.sym
-        closureNodes.find(IR.syms(_).contains(sym))
+      val hasVectorNodes = !currentScope0In.flatMap{TTPDef.unapply}.isEmpty
+      if (hasVectorNodes) {
+	      var result0 = result0B.map(getBlockResultFull)
+	      var state = new TransformationState(currentScope0In, result0)
+	      val pullDeps = new PullDependenciesTransformation()
+	      val transformer = new Transformer(state)
+	////    buildGraph(transformer)
+	      transformer.doTransformation(pullDeps, 500)
+	      transformer.doTransformation(new Narrow3Transformation, 1)
+	      transformer.doTransformation(pullDeps, 500)
+	//      transformer.doTransformation(new PullDependenciesTransformation(), 20)
+	      
+	//    buildGraph(transformer)
+	//    transformer.doOneStep
+	    //buildGraph(transformer)
+	      state = transformer.currentState
+	      val currentScope0 = state.ttps
+	      result0 = state.results
+	    
+	      def getValidOptions[A](l : Iterable[Option[A]]) = l.filter(_.isDefined).map(_.get)
+	      
+		  val closureNodes = getValidOptions[ClosureNode[_,_]](currentScope0.map(ClosureNode.unapply))
+		  def vectorNodes = getValidOptions[VectorNode](currentScope0.map{x => x match {case TTPDef(vn : VectorNode) => Some(vn); case _ => None}})
+	      def findClosureNodeWithLambda(l : Lambda[_,_]) = {
+	//        val closureNodes = getValidOptions[ClosureNode[_,_]](currentScope0.map{_ match { case TTP(_,ThinDef(cn : ClosureNode[_,_])) => Some(cn); case _ => None}})
+	        val sym = IR.findDefinition(l).get.sym
+	        closureNodes.find(IR.syms(_).contains(sym))
+	      }
+	      
+	      def findLambdaForSym(x : Sym[_]) = {
+	    	  currentScope0.map{ x : TTP => x match {case TTP(_,ThinDef(l : IR.Lambda[_,_])) => Some(l); case _ => None}}
+	    	  .filter(_.isDefined).map(_.get).find(_.x == x)
+	      }
+	      
+	      object SomeDef {
+	        def unapply(x : Any) : Option[Def[_]] = x match {
+     	      case TTPDef(x) => Some(x)
+	          case x : Def[_] => Some(x)
+	          case Def(x) => Some(x)
+//	          case x => Some(x)
+	          case x => {println("did not match "+x); None }
+	        }
+	      }
+	      
+	      def findClosureNode(node : Any, scope : List[TTP], prefix : String = "") : List[(ClosureNode[_,_], String)] = {
+	        node match {
+	          case SomeDef(IR.Tuple2Access1(d)) => findClosureNode(d, scope, "._1"+prefix)
+	          case SomeDef(IR.Tuple2Access2(d)) => findClosureNode(d, scope, "._2"+prefix)
+	          case SomeDef(IR.Field(struct, name, _)) => findClosureNode(struct, scope, "."+name+prefix)
+	          case x : Sym[_] => {for (lambdaOpt <- findLambdaForSym(x); cn <- findClosureNodeWithLambda(lambdaOpt) )
+	        		yield cn}.toList.map(x => (x,prefix))
+	        }
+	      }
+	      
+	      def findClosureNodeOld(node : Def[_], scope : List[TTP]) = {
+	        for (reading <- IR.syms(node);
+	            lambdaOpt <- findLambdaForSym(reading);
+	            cn <- findClosureNodeWithLambda(lambdaOpt))
+	          yield cn
+	      }.toList
+	      
+	      println("New current scope with result "+result0)
+	//      currentScope0.foreach(println)
+	      val accesses = currentScope0.flatMap{FieldAccess.unapply(_)}
+	      val tuples = accesses.map(x => (x,findClosureNode(x, currentScope0)))
+	      tuples.foreach{case (read, (closurenode, path)::Nil) => closurenode.directFieldReads += path; case _ => }
+	      println("Direct reads of closure nodes ")
+	      closureNodes.foreach(x => println(x+" "+x.directFieldReads))
+	      
+	      def addFieldReadsToPredecessors( in : VectorNode) {
+	        val inputSyms = IR.syms(in)
+	        val nodes = inputSyms.flatMap{IR.findDefinition(_)}.map(_.rhs).map{x => println("GUGUS "+x); x}.flatMap{_ match {case vn : VectorNode => Some(vn); case _ => None}}
+	        nodes.foreach{y => y.successorFieldReads ++= in.directFieldReads; addFieldReadsToPredecessors(y)}
+	      }
+	      
+	      println(vectorNodes)
+	      vectorNodes.foreach{addFieldReadsToPredecessors}
+	      println("All reads of vector nodes ")
+	      vectorNodes.foreach{x => println(x+" "+x.allFieldReads)}
+	      println
+	      super.focusExactScopeFat(currentScope0)(result0.map(IR.Block(_)))(body)
+      } else {
+        super.focusExactScopeFat(currentScope0In)(result0B)(body)
       }
-      
-      def findLambdaForSym(x : Sym[_]) = {
-    	  currentScope0.map{ x : TTP => x match {case TTP(_,ThinDef(l : IR.Lambda[_,_])) => Some(l); case _ => None}}
-    	  .filter(_.isDefined).map(_.get).find(_.x == x)
-      }
-      
-      def findClosureNode(node : Def[_], scope : List[TTP]) = {
-        for (reading <- IR.syms(node);
-            lambdaOpt <- findLambdaForSym(reading);
-            cn <- findClosureNodeWithLambda(lambdaOpt))
-          yield cn
-      }.toList
-      
-      println("New current scope with result "+result0)
-//      currentScope0.foreach(println)
-      val accesses = currentScope0.flatMap{FieldAccess.unapply(_)}
-      val tuples = accesses.map(x => (x,findClosureNode(x, currentScope0)))
-      tuples.foreach{case (read, closurenode::Nil) => closurenode.directFieldReads += read.index; case _ => }
-      println("Direct reads of closure nodes ")
-      closureNodes.foreach(x => println(x+" "+x.directFieldReads))
-      
-      def addFieldReadsToPredecessors( in : VectorNode) {
-        val inputSyms = IR.syms(in)
-        val nodes = inputSyms.flatMap{IR.findDefinition(_)}.map(_.rhs).map{x => println("GUGUS "+x); x}.flatMap{_ match {case vn : VectorNode => Some(vn); case _ => None}}
-        nodes.foreach{y => y.successorFieldReads ++= in.directFieldReads; addFieldReadsToPredecessors(y)}
-      }
-      
-      println(vectorNodes)
-      vectorNodes.foreach{addFieldReadsToPredecessors}
-      println("All reads of vector nodes ")
-      vectorNodes.foreach{x => println(x+" "+x.allFieldReads)}
-      println
-    super.focusExactScopeFat(currentScope0)(result0.map(IR.Block(_)))(body)
   }
   
   override def emitSource[A,B](f: Exp[A] => Exp[B], className: String, stream: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {
