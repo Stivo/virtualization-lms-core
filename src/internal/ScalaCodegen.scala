@@ -14,6 +14,8 @@ trait ScalaCodegen extends GenericCodegen {
   override def quote(x: Exp[Any]) : String = x match {
     case Const(s: String) => "\""+s.replaceAll("\\\\", "\\\\\\\\").replaceAll("\"", "\\\"")+"\""
     case Const(l : Long) => l+"L"
+    case Const(l : Char) => "'"+l+"'"
+    case Const(t : (Exp[_],Exp[_])) => "("+quote(t._1)+","+quote(t._2)+")"
     case _ => super.quote(x)
   }
 

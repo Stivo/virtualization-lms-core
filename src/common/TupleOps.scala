@@ -5,6 +5,10 @@ import java.io.PrintWriter
 
 trait TupleOps extends Base {
   implicit def make_tuple2[A:Manifest,B:Manifest](t: (Rep[A], Rep[B])) : Rep[(A,B)]
+  implicit def make_tuple2A[A:Manifest,B:Manifest](t: (A, Rep[B])) = make_tuple2((unit(t._1), t._2))
+  implicit def make_tuple2B[A:Manifest,B:Manifest](t: (Rep[A], B)) = make_tuple2((t._1, unit(t._2)))
+  implicit def make_tuple2AB[A:Manifest,B:Manifest](t: (A, B)) = make_tuple2((unit(t._1), unit(t._2)))
+      
   implicit def make_tuple3[A:Manifest,B:Manifest,C:Manifest](t: (Rep[A], Rep[B], Rep[C])) : Rep[(A,B,C)]
   implicit def make_tuple4[A:Manifest,B:Manifest,C:Manifest,D:Manifest](t: (Rep[A], Rep[B], Rep[C], Rep[D])) : Rep[(A,B,C,D)]
   implicit def make_tuple5[A:Manifest,B:Manifest,C:Manifest,D:Manifest,E:Manifest](t: (Rep[A], Rep[B], Rep[C], Rep[D], Rep[E])) : Rep[(A,B,C,D,E)]
