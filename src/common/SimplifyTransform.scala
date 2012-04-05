@@ -45,6 +45,7 @@ trait SimplifyTransform extends internal.FatTraversal {
         s
       }
     } catch { //hack
+      case e if e.toString contains "stop transformation" => throw e
       case e if e.toString contains "don't know how to mirror" => 
         printerr("error: " + e.getMessage)
         s
