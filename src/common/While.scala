@@ -36,17 +36,14 @@ trait WhileExp extends While with EffectExp {
     case _ => super.symsFreq(e)
   }
 
-  override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
-       case Reflect(While(cond, block), u, es) => 
-	      (if (f.hasContext) {
-	         val whileDo = __whileDo(f.reflectBlock(cond),f.reflectBlock(block))
-	         infix_rhs(findDefinition(whileDo.asInstanceOf[Sym[_]]).get).asInstanceOf[Def[A]]
-	      } else {
-	        null
-	        //__whileDo(f(cond),f(block)) // FIXME: should apply pattern rewrites (ie call smart constructor)
-	      }).asInstanceOf[Def[A]]
-       case _ => super.mirror(e, f)
-  }
+  override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = (e match {
+	  case Reflect(While(cond, block), u, es) =>
+	    if (f.hasContext) 
+	      __whileDo(f.reflectBlock(cond),f.reflectBlock(block))   // assuming return type changed to Exp[Unit]
+	    else 
+	      reflectMirrored(Reflect(While(f(cond),f(block)), mapOver(f,u), f(es)))
+	  case _ => super.mirror(e, f)
+   }).asInstanceOf[Exp[A]]
 
 }
 
