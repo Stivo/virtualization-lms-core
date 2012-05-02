@@ -37,6 +37,14 @@ trait IfThenElseExp extends IfThenElse with EffectExp {
   
   case class IfThenElse[T:Manifest](cond: Exp[Boolean], thenp: Block[T], elsep: Block[T]) extends AbstractIfThenElse[T]
 
+  
+  def __ifThenElse2[T:Manifest](cond: Rep[Boolean], thenp: => Rep[T], elsep: => Rep[T])(implicit pos: SourceContext) = {
+    val a = reifyEffectsHere(thenp)
+    val b = reifyEffectsHere(elsep)
+
+    ifThenElse(cond,a,b)
+  }
+  
   override def __ifThenElse[T:Manifest](cond: Rep[Boolean], thenp: => Rep[T], elsep: => Rep[T])(implicit pos: SourceContext) = {
     val a = reifyEffectsHere(thenp)
     val b = reifyEffectsHere(elsep)
@@ -58,13 +66,11 @@ trait IfThenElseExp extends IfThenElse with EffectExp {
     reflectEffectInternal(IfThenElse(cond,thenp,elsep), ae orElse be)
   }
   
-  override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Def[A] = e match {
-    case IfThenElse(c,a,b) => IfThenElse(f(c),f(a),f(b))
-    case _ => super.mirrorDef(e,f)
-  }
-  
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
-    case Reflect(IfThenElse(c,a,b), u, es) => reflectMirrored(Reflect(IfThenElse(f(c),f(a),f(b)), mapOver(f,u), f(es)))
+    case Reflect(IfThenElse(c,a,b), u, es) => {
+      val ifthen = __ifThenElse(f(c),f.reflectBlock(a),f.reflectBlock(b))
+      infix_rhs(findDefinition(ifthen.asInstanceOf[Sym[_]]).get).asInstanceOf[Def[A]]
+    }
     case IfThenElse(c,a,b) => 
       if (f.hasContext)
         __ifThenElse(f(c),f.reflectBlock(a),f.reflectBlock(b))
@@ -72,16 +78,6 @@ trait IfThenElseExp extends IfThenElse with EffectExp {
         IfThenElse(f(c),f(a),f(b)) // FIXME: should apply pattern rewrites (ie call smart constructor)
     case _ => super.mirror(e,f)
   }
-
-/*
-  override def mirror[A:Manifest](e: Def[A], f: Transformer): Exp[A] = e match {
-    case Reflect(IfThenElse(c,a,b), u, es) => mirror(IfThenElse(c,a,b)) // discard reflect
-    case IfThenElse(c,a,b) => ifThenElse(f(c),f(a),f(b)) // f.apply[A](a: Block[A]): Exp[A] mirrors the block into the current context
-    case _ => super.mirror(e,f)
-  }  
-*/
-
-
 
   override def aliasSyms(e: Any): List[Sym[Any]] = e match {
     case IfThenElse(c,a,b) => syms(a):::syms(b)

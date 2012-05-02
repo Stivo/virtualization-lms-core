@@ -24,8 +24,15 @@ trait Functions extends Base {
 
 trait FunctionsExp extends Functions with EffectExp {
 
-  case class Lambda[A:Manifest,B:Manifest](f: Exp[A] => Exp[B], x: Sym[A], y: Block[B]) extends Def[A => B]
-  case class Lambda2[A1:Manifest,A2:Manifest,B:Manifest](f: (Exp[A1],Exp[A2]) => Exp[B], x1: Sym[A1], x2: Sym[A2], y: Block[B]) extends Def[(A1,A2) => B]
+  case class Lambda[A:Manifest,B:Manifest](f: Exp[A] => Exp[B], x: Sym[A], y: Block[B]) extends Def[A => B] {
+    val mA = manifest[A]
+    val mB = manifest[B]
+  }
+  case class Lambda2[A1:Manifest,A2:Manifest,B:Manifest](f: (Exp[A1],Exp[A2]) => Exp[B], x1: Sym[A1], x2: Sym[A2], y: Block[B]) extends Def[(A1,A2) => B] {
+    val mA1 = manifest[A1]
+    val mA2 = manifest[A2]
+    val mB = manifest[B]
+  }
 
   case class Apply[A:Manifest,B:Manifest](f: Exp[A => B], arg: Exp[A]) extends Def[B]
 
@@ -94,6 +101,18 @@ trait FunctionsExp extends Functions with EffectExp {
     case Lambda2(f, x1, x2, y) => freqHot(y)
     case _ => super.symsFreq(e)
   }
+  
+  override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Def[A] = 
+    (e match {
+       case l@Lambda(func,x,y) =>
+         if (f.hasContext)
+           Lambda(f(func),x,Block(f.reflectBlock(y)))(l.mA, l.mB)
+         else
+           Lambda(f(func),x,f(y))(l.mA, l.mB)
+       case l@Lambda2(func,x1, x2 ,y) => Lambda2(f(func),x1,x2,f(y))(l.mA1, l.mA2, l.mB)
+       case _ => super.mirrorDef(e, f)
+    }).asInstanceOf[Def[A]]
+
 
 }
 
@@ -108,16 +127,16 @@ trait ScalaGenFunctions extends ScalaGenEffect with BaseGenFunctions {
   import IR._
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case e@Lambda(fun, x, y) =>
-      stream.println("val " + quote(sym) + " = {" + quote(x) + ": (" + x.tp + ") => ")
+    case e@Lambda(_, x, y) =>
+      stream.println("val " + quote(sym) + " = {" + quote(x) + ": (" + remap(x.tp) + ") => ")
       emitBlock(y)
-      stream.println(quote(getBlockResult(y)) + ": " + y.tp)
+      stream.println(quote(getBlockResult(y)) + ": " + remap(y.tp))
       stream.println("}")
 
-    case e@Lambda2(fun, x1, x2, y) =>
-      stream.println("val " + quote(sym) + " = { (" + quote(x1) + ": " + x1.tp + ", " + quote(x2) + ": " + x2.tp + ") => ")
+    case e@Lambda2(_, x1, x2, y) =>
+      stream.println("val " + quote(sym) + " = { (" + quote(x1) + ": " + remap(x1.tp) + ", " + quote(x2) + ": " + remap(x2.tp) + ") => ")
       emitBlock(y)
-      stream.println(quote(getBlockResult(y)) + ": " + y.tp)
+      stream.println(quote(getBlockResult(y)) + ": " + remap(y.tp))
       stream.println("}")
 
     case Apply(fun, arg) =>
