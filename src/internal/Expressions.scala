@@ -89,7 +89,10 @@ trait Expressions extends Utils {
 
   abstract class Def[+T] // operations (composite)
 
-  abstract class Stm // statement (links syms and definitions)
+  abstract class Stm { // statement (links syms and definitions)
+     def syms : List[Sym[Any]]
+     def defs : List[Def[Any]]
+  }
   
   def infix_lhs(stm: Stm): List[Sym[Any]] = stm match {
     case TP(sym, rhs) => List(sym)
@@ -109,7 +112,10 @@ trait Expressions extends Utils {
     case _ => None
   }
   
-  case class TP[+T](sym: Sym[T], rhs: Def[T]) extends Stm
+  case class TP[+T](sym: Sym[T], rhs: Def[T]) extends Stm {
+    def syms = List(sym)
+    def defs = List(rhs)
+  }
 
   // graph construction state
   
