@@ -43,7 +43,7 @@ trait FunctionsExp extends Functions with EffectExp {
                                // need to incorporate the other pieces at some point.
     Lambda(f, x, y)
   }
-
+  
   def doLambda2[A1:Manifest,A2:Manifest,B:Manifest](f: (Exp[A1],Exp[A2]) => Exp[B])(implicit pos: SourceContext) : Exp[(A1,A2) => B] = {
 
     val x1 = fresh[A1]
@@ -102,17 +102,16 @@ trait FunctionsExp extends Functions with EffectExp {
     case _ => super.symsFreq(e)
   }
   
-  override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Def[A] = 
+  override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Exp[A] = 
     (e match {
        case l@Lambda(func,x,y) =>
          if (f.hasContext)
-           Lambda(f(func),x,Block(f.reflectBlock(y)))(l.mA, l.mB)
+           toAtom(Lambda(f(func),x, Block(f.reflectBlock(y)))(l.mA, l.mB))(mtype(manifest[A]), ctx)
          else
-           Lambda(f(func),x,f(y))(l.mA, l.mB)
-       case l@Lambda2(func,x1, x2 ,y) => Lambda2(f(func),x1,x2,f(y))(l.mA1, l.mA2, l.mB)
-       case _ => super.mirrorDef(e, f)
-    }).asInstanceOf[Def[A]]
-
+           doLambda(f(func)) //Lambda(f(func),x,f(y))(l.mA, l.mB)
+//       case l@Lambda2(func,x1, x2 ,y) => Lambda2(f(func),x1,x2,f(y))(l.mA1, l.mA2, l.mB)
+       case _ => super.mirror(e, f)
+    }).asInstanceOf[Exp[A]]
 
 }
 
