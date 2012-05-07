@@ -74,10 +74,11 @@ trait StringOpsExp extends StringOps with VariablesExp {
   def string_valueof(a: Exp[Any])(implicit pos: SourceContext) = StringValueOf(a)
   def string_todouble(s: Rep[String])(implicit pos: SourceContext) = StringToDouble(s)
 
-  override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = (e match {
-    case StringPlus(a,b) => string_plus(f(a),f(b))
-    case _ => super.mirror(e,f)
-  }).asInstanceOf[Exp[A]]
+  override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Def[A] = (e match {
+    case StringPlus(a,b) => StringPlus(f(a),f(b))
+    case StringToDouble(a) => StringToDouble(f(a))
+    case _ => super.mirrorDef(e,f)
+  }).asInstanceOf[Def[A]]
 }
 
 trait ScalaGenStringOps extends ScalaGenBase {

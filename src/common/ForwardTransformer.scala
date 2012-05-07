@@ -1,6 +1,6 @@
 package scala.virtualization.lms
 package common
-
+import scala.reflect.SourceContext
 
 trait ForwardTransformer extends internal.AbstractSubstTransformer with internal.FatBlockTraversal { self =>
   val IR: LoopsFatExp with IfThenElseFatExp
@@ -22,7 +22,7 @@ trait ForwardTransformer extends internal.AbstractSubstTransformer with internal
     case TP(sym, rhs) => 
       val sym2 = apply(sym)
       if (sym2 == sym) {
-        val replace = mirror(rhs, self.asInstanceOf[Transformer]) // cast needed why?
+        val replace = mirror(rhs, self.asInstanceOf[Transformer])(mtype(sym.tp), implicitly[SourceContext]) // cast needed why?
         subst += (sym -> replace)
       } else {
         printerr("warning: transformer already has a substitution " + sym + "->" + sym2 + " when encountering stm " + stm)
