@@ -19,6 +19,13 @@ trait ScalaCodegen extends GenericCodegen with Config {
       outFile.delete
   }
 
+  override def quote(x: Exp[Any]) : String = x match {
+    case Const(s: String) => "\""+s.replaceAll("\\\\", "\\\\\\\\").replaceAll("\"", "\\\"")+"\""
+    case Const(l : Long) => l+"L"
+    case Const(l : Char) => "'"+l+"'"
+    case _ => super.quote(x)
+  }
+  
   def emitSource[A,B](f: Exp[A] => Exp[B], className: String, out: PrintWriter)(implicit mA: Manifest[A], mB: Manifest[B]): List[(Sym[Any], Any)] = {
 
     val x = fresh[A]
@@ -94,7 +101,7 @@ trait ScalaCodegen extends GenericCodegen with Config {
       val context = sym.pos(0)
       "      // " + relativePath(context.fileName) + ":" + context.line
     }
-    stream.println("val " + quote(sym) + " = " + rhs + extra)
+    stream.println("val " + quote(sym) + " = " + rhs +";" + extra)
   }
   
   def emitVarDef(sym: Sym[Variable[Any]], rhs: String): Unit = {
