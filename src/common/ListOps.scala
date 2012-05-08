@@ -19,8 +19,10 @@ trait ListOps extends Variables {
     def map[B:Manifest](f: Rep[A] => Rep[B]) = list_map(l,f)
     def sortBy[B:Manifest:Ordering](f: Rep[A] => Rep[B]) = list_sortby(l,f)
     def ::(e: Rep[A]) = list_prepend(l,e)
+    def ++(l2: Rep[List[A]]) = list_concat(l,l2)
     def toArray = list_toarray(l)
     def toSeq = list_toseq(l)
+    def size = list_size(l)
   }
   
   def list_new[A:Manifest](xs: Seq[Rep[A]])(implicit pos: SourceContext): Rep[List[A]]
@@ -35,10 +37,13 @@ trait ListOps extends Variables {
   def list_head[A:Manifest](xs: Rep[List[A]])(implicit pos: SourceContext): Rep[A]
   def list_tail[A:Manifest](xs: Rep[List[A]])(implicit pos: SourceContext): Rep[List[A]]
   def list_isEmpty[A:Manifest](xs: Rep[List[A]])(implicit pos: SourceContext): Rep[Boolean]
+  def list_size[A:Manifest](l1 : Rep[List[A]]) : Rep[Int]
 }
 
 trait ListOpsExp extends ListOps with EffectExp with VariablesExp {
-  case class ListNew[A:Manifest](xs: Seq[Rep[A]]) extends Def[List[A]]
+  case class ListNew[A:Manifest](xs: Seq[Rep[A]]) extends Def[List[A]] {
+    val m = manifest[A]
+  }
   case class ListFromSeq[A:Manifest](xs: Rep[Seq[A]]) extends Def[List[A]]
   case class ListMap[A:Manifest,B:Manifest](l: Exp[List[A]], x: Sym[A], block: Block[B]) extends Def[List[B]]
   case class ListSortBy[A:Manifest,B:Manifest:Ordering](l: Exp[List[A]], x: Sym[A], block: Block[B]) extends Def[List[A]]
@@ -50,6 +55,7 @@ trait ListOpsExp extends ListOps with EffectExp with VariablesExp {
   case class ListHead[A:Manifest](xs: Rep[List[A]]) extends Def[A]
   case class ListTail[A:Manifest](xs: Rep[List[A]]) extends Def[List[A]]
   case class ListIsEmpty[A:Manifest](xs: Rep[List[A]]) extends Def[Boolean]
+  case class ListSize[A:Manifest](xs: Rep[List[A]]) extends Def[Int]
   
   def list_new[A:Manifest](xs: Seq[Rep[A]])(implicit pos: SourceContext) = ListNew(xs)
   def list_fromseq[A:Manifest](xs: Rep[Seq[A]])(implicit pos: SourceContext) = ListFromSeq(xs)
@@ -71,7 +77,8 @@ trait ListOpsExp extends ListOps with EffectExp with VariablesExp {
   def list_head[A:Manifest](xs: Rep[List[A]])(implicit pos: SourceContext) = ListHead(xs)
   def list_tail[A:Manifest](xs: Rep[List[A]])(implicit pos: SourceContext) = ListTail(xs)
   def list_isEmpty[A:Manifest](xs: Rep[List[A]])(implicit pos: SourceContext) = ListIsEmpty(xs)
-  
+  def list_size[A:Manifest](l1 : Rep[List[A]]) = ListSize(l1)
+
   override def syms(e: Any): List[Sym[Any]] = e match {
     case ListMap(a, x, body) => syms(a):::syms(body)
     case ListSortBy(a, x, body) => syms(a):::syms(body)
@@ -88,7 +95,18 @@ trait ListOpsExp extends ListOps with EffectExp with VariablesExp {
     case ListMap(a, x, body) => freqNormal(a):::freqHot(body)
     case ListSortBy(a, x, body) => freqNormal(a):::freqHot(body)
     case _ => super.symsFreq(e)
-  }  
+  }
+  
+   override def mirrorDef[A: Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Def[A] = {
+    val out = (e match {
+      case l @ ListNew(w) => ListNew(f(w))(l.m) 
+      case l @ ListConcat(l1, l2) => ListConcat(f(l1), f(l2))
+      case ListSize(l) => ListSize(f(l))
+      case _ => super.mirrorDef(e, f)
+    })
+    out.asInstanceOf[Def[A]]
+  }
+
 }
 
 trait BaseGenListOps extends GenericNestedCodegen {
@@ -124,6 +142,7 @@ trait ScalaGenListOps extends BaseGenListOps with ScalaGenEffect {
     case ListPrepend(l,e) => emitValDef(sym, quote(e) + " :: " + quote(l))    
     case ListToArray(l) => emitValDef(sym, quote(l) + ".toArray")
     case ListToSeq(l) => emitValDef(sym, quote(l) + ".toSeq")
+    case ListSize(l1) => emitValDef(sym, "%s.size".format(quote(l1)))
     case _ => super.emitNode(sym, rhs)
   }
 }
