@@ -111,7 +111,11 @@ trait FunctionsExp extends Functions with EffectExp {
            toAtom(Lambda(f(func),x,Block(f.reflectBlock(y)))(l.mA, l.mB))
          else
            Lambda(f(func),x,f(y))(l.mA, l.mB)
-       case l@Lambda2(func,x1, x2 ,y) => Lambda2(f(func),x1,x2,f(y))(l.mA1, l.mA2, l.mB)
+       case l@Lambda2(func, x1, x2, y) =>
+         if (f.hasContext)
+           toAtom(Lambda2(f(func), x1, x2, Block(f.reflectBlock(y)))(l.mA1, l.mA2, l.mB))
+         else
+           Lambda2(f(func),x1,x2,f(y))(l.mA1, l.mA2, l.mB)
        case _ => super.mirror(e, f)
     }).asInstanceOf[Exp[A]]
 }
@@ -134,9 +138,9 @@ trait ScalaGenFunctions extends ScalaGenEffect with BaseGenFunctions {
       stream.println("}")
 
     case e@Lambda2(fun, x1, x2, y) =>
-      stream.println("val " + quote(sym) + " = { (" + quote(x1) + ": " + x1.tp + ", " + quote(x2) + ": " + x2.tp + ") => ")
+      stream.println("val " + quote(sym) + " = { (" + quote(x1) + ": " + remap(x1.tp) + ", " + quote(x2) + ": " + remap(x2.tp) + ") => ")
       emitBlock(y)
-      stream.println(quote(getBlockResult(y)) + ": " + y.tp)
+      stream.println(quote(getBlockResult(y)) + ": " + remap(y.tp))
       stream.println("}")
 
     case Apply(fun, arg) =>
