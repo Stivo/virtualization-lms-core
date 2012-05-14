@@ -40,8 +40,8 @@ trait NumericOps extends Variables {
 
 trait NumericOpsExp extends NumericOps with VariablesExp with BaseFatExp {
   abstract class DefMN[A:Manifest:Numeric] extends Def[A] {
-    def mev = manifest[A]
-    def aev = implicitly[Numeric[A]]
+    val mev = manifest[A]
+    val aev = implicitly[Numeric[A]]
   }
 
   case class NumericPlus[T:Numeric:Manifest](lhs: Exp[T], rhs: Exp[T]) extends DefMN[T]
@@ -55,10 +55,11 @@ trait NumericOpsExp extends NumericOps with VariablesExp with BaseFatExp {
   def numeric_divide[T:Numeric:Manifest](lhs: Exp[T], rhs: Exp[T])(implicit pos: SourceContext) : Exp[T] = NumericDivide(lhs, rhs)
   
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
-    case e@NumericPlus(l,r) => numeric_plus(f(l), f(r))(e.aev, e.mev, pos)
-    case e@NumericMinus(l,r) => numeric_minus(f(l), f(r))(e.aev, e.mev, pos)
-    case e@NumericTimes(l,r) => numeric_times(f(l), f(r))(e.aev, e.mev, pos)
-    case e@NumericDivide(l,r) => numeric_divide(f(l), f(r))(e.aev, e.mev, pos)
+    // FIXME
+//    case e@NumericPlus(l,r) => numeric_plus(f(l), f(r))(e.aev, mtype(e.mev),  pos)
+//    case e@NumericMinus(l,r) => numeric_minus(f(l), f(r))(e.aev, mtype(e.mev),  pos)
+//    case e@NumericTimes(l,r) => numeric_times(f(l), f(r))(e.aev, mtype(e.mev),  pos)
+//    case e@NumericDivide(l,r) => numeric_divide(f(l), f(r))(e.aev, mtype(e.mev),  pos)
     case _ => super.mirror(e,f)
   }
 
