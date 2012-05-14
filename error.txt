@@ -9075,7 +9075,7 @@ unhandled exception while transforming SplitEffects.scala
 [0m[[31merror[0m] [0m  reconstructed args:  -d /home/stivo/master/distributed/virt/target/scala-2.10/classes -P:continuations:enable -Yvirtualize -classpath /home/stivo/master/distributed/virt/target/scala-2.10/classes:/home/stivo/.ivy2/cache/com.typesafe/config/jars/config-0.4.0.jar:/home/stivo/.sbt/boot/org.scala-lang.virtualized.scala-2.10.0-M3/lib/scala-compiler.jar -Xplugin:/home/stivo/.ivy2/cache/org.scala-lang.plugins/continuations/jars/continuations-2.10.0-M3.jar -bootclasspath /usr/lib/jvm/java-7-openjdk-amd64/jre/lib/resources.jar:/usr/lib/jvm/java-7-openjdk-amd64/jre/lib/rt.jar:/usr/lib/jvm/java-7-openjdk-amd64/jre/lib/sunrsasign.jar:/usr/lib/jvm/java-7-openjdk-amd64/jre/lib/jsse.jar:/usr/lib/jvm/java-7-openjdk-amd64/jre/lib/jce.jar:/usr/lib/jvm/java-7-openjdk-amd64/jre/lib/charsets.jar:/usr/lib/jvm/java-7-openjdk-amd64/jre/lib/netx.jar:/usr/lib/jvm/java-7-openjdk-amd64/jre/lib/plugin.jar:/usr/lib/jvm/java-7-openjdk-amd64/jre/lib/rhino.jar:/usr/lib/jvm/java-7-openjdk-amd64/jre/classes:/home/stivo/.sbt/boot/org.scala-lang.virtualized.scala-2.10.0-M3/lib/scala-library.jar[0m
 [0m[[31merror[0m] [0m[0m
 [0m[[31merror[0m] [0munrecoverable error[0m
-[0m[[31merror[0m] [0mTotal time: 46 s, completed May 14, 2012 5:34:48 PM[0m
+[0m[[31merror[0m] [0mTotal time: 46 s, completed May 14, 2012 5:38:17 PM[0m
 
 
 scala.reflect.internal.Types$TypeError: reassignment to val
