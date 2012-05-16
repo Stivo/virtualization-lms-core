@@ -29,6 +29,7 @@ trait ArrayOps extends Variables {
     def length(implicit pos: SourceContext) = array_length(a)
     def foreach(block: Rep[T] => Rep[Unit])(implicit pos: SourceContext) = array_foreach(a, block)
     def sort(implicit pos: SourceContext) = array_sort(a)
+    def sortBy[B:Manifest](func: Rep[T] => Rep[B]) = array_sortBy(a, func)
     def map[B:Manifest](f: Rep[T] => Rep[B]) = array_map(a,f)
     def toSeq = array_toseq(a)
   }    
@@ -43,6 +44,7 @@ trait ArrayOps extends Variables {
   def array_copy[T:Manifest](src: Rep[Array[T]], srcPos: Rep[Int], dest: Rep[Array[T]], destPos: Rep[Int], len: Rep[Int])(implicit pos: SourceContext): Rep[Unit]
   def array_unsafe_copy[T:Manifest](src: Rep[Array[T]], srcPos: Rep[Int], dest: Rep[Array[T]], destPos: Rep[Int], len: Rep[Int])(implicit pos: SourceContext): Rep[Unit]
   def array_sort[T:Manifest](x: Rep[Array[T]])(implicit pos: SourceContext): Rep[Array[T]]
+  def array_sortBy[A:Manifest,B:Manifest](a: Rep[Array[A]], f: Rep[A] => Rep[B]): Rep[Array[A]]
   def array_map[A:Manifest,B:Manifest](a: Rep[Array[A]], f: Rep[A] => Rep[B]): Rep[Array[B]]
   def array_toseq[A:Manifest](a: Rep[Array[A]]): Rep[Seq[A]]
 }
@@ -62,7 +64,14 @@ trait ArrayOpsExp extends ArrayOps with EffectExp with VariablesExp {
   case class ArraySort[T:Manifest](x: Exp[Array[T]]) extends Def[Array[T]] {
     val m = manifest[T]
   }
-  case class ArrayMap[A:Manifest,B:Manifest](a: Exp[Array[A]], x: Sym[A], block: Block[B]) extends Def[Array[B]] 
+  case class ArraySortBy[A:Manifest,B:Manifest](a: Exp[Array[A]], x: Sym[A], block: Block[B]) extends Def[Array[A]] {
+    val mA = manifest[A]
+    val mB = manifest[B]
+  } 
+  case class ArrayMap[A:Manifest,B:Manifest](a: Exp[Array[A]], x: Sym[A], block: Block[B]) extends Def[Array[B]] {
+    val mA = manifest[A]
+    val mB = manifest[B]
+  } 
   case class ArrayToSeq[A:Manifest](x: Exp[Array[A]]) extends Def[Seq[A]]
   
   def array_obj_new[T:Manifest](n: Exp[Int]) = reflectMutable(ArrayNew(n))
@@ -79,6 +88,11 @@ trait ArrayOpsExp extends ArrayOps with EffectExp with VariablesExp {
   def array_copy[T:Manifest](src: Exp[Array[T]], srcPos: Exp[Int], dest: Exp[Array[T]], destPos: Exp[Int], len: Exp[Int])(implicit pos: SourceContext) = reflectWrite(dest)(ArrayCopy(src,srcPos,dest,destPos,len))
   def array_unsafe_copy[T:Manifest](src: Exp[Array[T]], srcPos: Exp[Int], dest: Exp[Array[T]], destPos: Exp[Int], len: Exp[Int])(implicit pos: SourceContext) = ArrayCopy(src,srcPos,dest,destPos,len)
   def array_sort[T:Manifest](x: Exp[Array[T]])(implicit pos: SourceContext) = ArraySort(x)
+  def array_sortBy[A:Manifest,B:Manifest](a: Exp[Array[A]], f: Exp[A] => Exp[B]) = {
+    val x = fresh[A]
+    val b = reifyEffects(f(x))
+    reflectEffect(ArraySortBy(a, x, b), summarizeEffects(b))
+  }
   def array_map[A:Manifest,B:Manifest](a: Exp[Array[A]], f: Exp[A] => Exp[B]) = {
     val x = fresh[A]
     val b = reifyEffects(f(x))
@@ -91,6 +105,7 @@ trait ArrayOpsExp extends ArrayOps with EffectExp with VariablesExp {
 
   override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Def[A] = (e match {
     case ArrayLength(a) => ArrayLength(f(a))
+    case a@ArraySortBy(in, x, b) => ArraySortBy(f(in), x, f(b))(a.mA, a.mB)
 //    case ArrayApply(a,x) => ArrayApply(f(a),f(x))
     case _ => super.mirrorDef(e,f)
   }).asInstanceOf[Def[A]]
@@ -98,17 +113,22 @@ trait ArrayOpsExp extends ArrayOps with EffectExp with VariablesExp {
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = {
 	(e match {
 	  case ArrayApply(a,x) => array_apply(f(a),f(x))
-	  case ArrayMap(a,x,b) =>
+	  case aa@ArrayMap(a,x,b) =>
    	    if (f.hasContext) {
 	      val newBlock = Block(f.reflectBlock(b))
-	      toAtom(ArrayMap(f(a), f(x).asInstanceOf[Sym[_]], newBlock))
+	      toAtom(ArrayMap(f(a), f(x).asInstanceOf[Sym[_]], newBlock)(aa.mA, aa.mB))
 	    } else {
-	      ArrayMap(f(a), f(x).asInstanceOf[Sym[_]], f(b))
+	      ArrayMap(f(a), f(x).asInstanceOf[Sym[_]], f(b))(aa.mA, aa.mB)
 	    }
 	  case Reflect(e@ArrayNew(n), u, es) => reflectMirrored(Reflect(ArrayNew(f(n))(e.m), mapOver(f,u), f(es)))(mtype(manifest[A]))    
 	  case Reflect(ArrayApply(l,r), u, es) => reflectMirrored(Reflect(ArrayApply(f(l),f(r)), mapOver(f,u), f(es)))(mtype(manifest[A]))
 	  case Reflect(ArrayUpdate(l,i,r), u, es) => reflectMirrored(Reflect(ArrayUpdate(f(l),f(i),f(r)), mapOver(f,u), f(es)))(mtype(manifest[A]))
-	  case Reflect(ArrayForeach(a,x,b), u, es) => reflectMirrored(Reflect(ArrayForeach(f(a), f(x).asInstanceOf[Sym[_]], f(b)), mapOver(f,u), f(es)))(mtype(manifest[A]))
+	  //case Reflect(ArrayForeach(a,x,b), u, es) => reflectMirrored(Reflect(ArrayForeach(f(a), f(x).asInstanceOf[Sym[_]], f(b)), mapOver(f,u), f(es)))(mtype(manifest[A]))
+	  case Reflect(ArrayForeach(a,x,b), u, es) =>
+	    if (f.hasContext)
+	      reflectMirrored(Reflect(ArrayForeach(f(a), f(x).asInstanceOf[Sym[_]], Block(f.reflectBlock(b))), mapOver(f,u), f(es)))(mtype(manifest[A]))
+	    else
+	      reflectMirrored(Reflect(ArrayForeach(f(a), f(x).asInstanceOf[Sym[_]], f(b)), mapOver(f,u), f(es)))(mtype(manifest[A]))
 	  case _ => super.mirror(e,f)
 	}).asInstanceOf[Exp[A]] // why??
   }
@@ -117,18 +137,21 @@ trait ArrayOpsExp extends ArrayOps with EffectExp with VariablesExp {
   override def syms(e: Any): List[Sym[Any]] = e match {
     case ArrayForeach(a, x, body) => syms(a):::syms(body)
     case ArrayMap(a, x, body) => syms(a):::syms(body)
+    case ArraySortBy(a, x, body) => syms(a):::syms(body)
     case _ => super.syms(e)
   }
 
   override def boundSyms(e: Any): List[Sym[Any]] = e match {
     case ArrayForeach(a, x, body) => x :: effectSyms(body)
     case ArrayMap(a, x, body) => x :: effectSyms(body)
+    case ArraySortBy(a, x, body) => x ::effectSyms(body)
     case _ => super.boundSyms(e)
   }
 
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
     case ArrayForeach(a, x, body) => freqNormal(a):::freqHot(body)
     case ArrayMap(a, x, body) => freqNormal(a):::freqHot(body)
+    case ArraySortBy(a, x, body) => freqNormal(a):::freqHot(body)
     case _ => super.symsFreq(e)
   }
     
@@ -183,10 +206,14 @@ trait ScalaGenArrayOps extends BaseGenArrayOps with ScalaGenBase {
       stream.println("scala.util.Sorting.quickSort(d)")
       stream.println("d")
       stream.println("}")
+    case n@ArraySortBy(a, x, blk) =>
+      stream.println("val %s = %s.sortBy({ %s => ".format(quote(sym), quote(a), quote(x)))
+      emitBlock(blk)
+      stream.println("%s}) // output type: %s".format(quote(getBlockResult(blk)), remap(sym.tp)))
     case n@ArrayMap(a,x,blk) => 
       stream.println("// workaround for refinedManifest problem")
       stream.println("val " + quote(sym) + " = {")
-      stream.println("val out = new %s(%s.length)".format(remap(sym.tp), quote(a)))
+      stream.println("val out = new Array[%s](%s.length)".format(remap(n.mB), quote(a)))
       stream.println("val in = " + quote(a))
       stream.println("var i = 0")
       stream.println("while (i < in.length) {")
