@@ -16,6 +16,7 @@ trait ForwardTransformer extends internal.AbstractSubstTransformer with internal
   override def reflectBlock[A](block: Block[A]): Exp[A] = {
     traverseBlock(block)
     apply(block.res)
+//    apply(getBlockResult(block))
   }
 
   override def traverseStm(stm: Stm): Unit = stm match {

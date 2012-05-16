@@ -6,14 +6,14 @@ import scala.virtualization.lms.internal.GenericNestedCodegen
 import scala.reflect.SourceContext
 
 trait While extends Base {
-  def __whileDo(cond: => Rep[Boolean], body: => Rep[Unit])(implicit pos: SourceContext)
+  def __whileDo(cond: => Rep[Boolean], body: => Rep[Unit])(implicit pos: SourceContext) : Rep[Unit]
 }
 
 
 trait WhileExp extends While with EffectExp {
   case class While(cond: Block[Boolean], body: Block[Unit]) extends Def[Unit]
 
-  override def __whileDo(cond: => Exp[Boolean], body: => Rep[Unit])(implicit pos: SourceContext) {
+  override def __whileDo(cond: => Exp[Boolean], body: => Rep[Unit])(implicit pos: SourceContext) = {
     val c = reifyEffects(cond)
     val a = reifyEffects(body)
     val ce = summarizeEffects(c)
@@ -37,12 +37,26 @@ trait WhileExp extends While with EffectExp {
   }
 
 
+  override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = (e match {
+    case Reflect(While(cond, block), u, es) => {
+    	if (f.hasContext) {
+    	  val newCond = f.reflectBlock(cond)
+    	  val newBody = f.reflectBlock(block)
+    	  reflectMirrored(Reflect(While(Block(newCond), Block(newBody)), mapOver(f,u), f(es)))
+//    	  __whileDo(newCond, newBody)
+    	} else
+    		reflectMirrored(Reflect(While(f(cond),f(block)), mapOver(f,u), f(es)))
+    }
+    case _ => super.mirror(e,f)
+  }).asInstanceOf[Exp[A]]
+
+   
 }
 
 
 trait WhileExpOptSpeculative extends WhileExp with PreviousIterationDummyExp {
   
-  override def __whileDo(cond: => Exp[Boolean], body: => Rep[Unit])(implicit pos: SourceContext) {
+  override def __whileDo(cond: => Exp[Boolean], body: => Rep[Unit])(implicit pos: SourceContext) = {
 
     val pc = fresh[Nothing]
     val pb = fresh[Nothing]

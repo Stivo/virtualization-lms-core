@@ -43,7 +43,11 @@ trait FunctionsExp extends Functions with EffectExp {
     val y = reifyEffects(f(x)) // unfold completely at the definition site. 
                                // TODO: this will not work if f is recursive. 
                                // need to incorporate the other pieces at some point.
-    Lambda(f, x, y)
+    val effects = summarizeEffects(y)
+    val out = Lambda(f,x,y)
+    if (effects != Pure()) {
+      reflectEffect(out, effects)
+    } else out
   }
 
   def doLambda2[A1:Manifest,A2:Manifest,B:Manifest](f: (Exp[A1],Exp[A2]) => Exp[B])(implicit pos: SourceContext) : Exp[(A1,A2) => B] = {
@@ -53,7 +57,11 @@ trait FunctionsExp extends Functions with EffectExp {
     val y = reifyEffects(f(x1,x2)) // unfold completely at the definition site.
                                // TODO: this will not work if f is recursive.
                                // need to incorporate the other pieces at some point.
-    Lambda2(f, x1, x2, y)
+    val effects = summarizeEffects(y)
+    val out = Lambda2(f, x1, x2, y)
+    if (effects != Pure()) {
+      reflectEffect(out, effects)
+    } else out
   }
 
   def doApply[A:Manifest,B:Manifest](f: Exp[A => B], x: Exp[A])(implicit pos: SourceContext): Exp[B] = f match {
@@ -111,6 +119,12 @@ trait FunctionsExp extends Functions with EffectExp {
            toAtom(Lambda(f(func),x,Block(f.reflectBlock(y)))(l.mA, l.mB))
          else
            Lambda(f(func),x,f(y))(l.mA, l.mB)
+       case Reflect(l@Lambda(func,x,y), u, es) =>
+         if (f.hasContext) {
+           reflectMirrored(Reflect(Lambda(f(func), x, Block(f.reflectBlock(y)))(l.mA, l.mB), mapOver(f,u), f(es)))
+         } else {
+           reflectMirrored(Reflect(Lambda(f(func), x, f(y))(l.mA, l.mB), mapOver(f,u), f(es)))
+         }
        case l@Lambda2(func, x1, x2, y) =>
          if (f.hasContext)
            toAtom(Lambda2(f(func), x1, x2, Block(f.reflectBlock(y)))(l.mA1, l.mA2, l.mB))

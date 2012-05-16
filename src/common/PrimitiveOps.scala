@@ -146,6 +146,7 @@ trait PrimitiveOpsExp extends PrimitiveOps with BaseExp {
       case IntBitwiseNot(x) => int_bitwise_not(f(x))
       case IntDivide(x,y) => int_divide(f(x),f(y))
       case IntMod(x,y) => int_mod(f(x),f(y))
+      case ObjDoublePositiveInfinity() => obj_double_positive_infinity
       case _ => super.mirror(e,f)
     }
   }).asInstanceOf[Exp[A]]
