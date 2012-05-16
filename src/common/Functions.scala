@@ -25,10 +25,12 @@ trait Functions extends Base {
 trait FunctionsExp extends Functions with EffectExp {
 
   case class Lambda[A:Manifest,B:Manifest](f: Exp[A] => Exp[B], x: Sym[A], y: Block[B]) extends Def[A => B] {
+    val m = manifest[A => B]
     val mA = manifest[A]
     val mB = manifest[B]
   }
-  case class Lambda2[A1:Manifest,A2:Manifest,B:Manifest](f: (Exp[A1],Exp[A2]) => Exp[B], x1: Sym[A1], x2: Sym[A2], y: Block[B]) extends Def[(A1,A2) => B] {
+  
+  case class Lambda2[A1:Manifest,A2:Manifest,B:Manifest](f: (Exp[A1],Exp[A2]) => Exp[B], x1: Sym[A1], x2: Sym[A2], y: Block[B]) extends Def[(A1,A2) => B]{
     val mA1 = manifest[A1]
     val mA2 = manifest[A2]
     val mB = manifest[B]
@@ -106,13 +108,16 @@ trait FunctionsExp extends Functions with EffectExp {
     (e match {
        case l@Lambda(func,x,y) =>
          if (f.hasContext)
-           toAtom(Lambda(f(func),x, Block(f.reflectBlock(y)))(l.mA, l.mB))(mtype(manifest[A]), ctx)
+           toAtom(Lambda(f(func),x,Block(f.reflectBlock(y)))(l.mA, l.mB))
          else
-           doLambda(f(func)) //Lambda(f(func),x,f(y))(l.mA, l.mB)
-//       case l@Lambda2(func,x1, x2 ,y) => Lambda2(f(func),x1,x2,f(y))(l.mA1, l.mA2, l.mB)
+           Lambda(f(func),x,f(y))(l.mA, l.mB)
+       case l@Lambda2(func, x1, x2, y) =>
+         if (f.hasContext)
+           toAtom(Lambda2(f(func), x1, x2, Block(f.reflectBlock(y)))(l.mA1, l.mA2, l.mB))
+         else
+           Lambda2(f(func),x1,x2,f(y))(l.mA1, l.mA2, l.mB)
        case _ => super.mirror(e, f)
     }).asInstanceOf[Exp[A]]
-
 }
 
 trait BaseGenFunctions extends GenericNestedCodegen {

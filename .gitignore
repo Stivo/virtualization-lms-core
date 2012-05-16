@@ -7,4 +7,5 @@ project/build/target
 target
 virtualization-lms-core.iml
 .gitingore
+bin
 #test-out

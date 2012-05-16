@@ -8,7 +8,7 @@ resolvers += ScalaToolsSnapshots
 
 resolvers += dropboxScalaTestRepo
 
-scalaOrganization := "org.scala-lang"
+//scalaOrganization := "org.scala-lang"
 
 //scalaBinaryVersion := virtScala // necessary??
 

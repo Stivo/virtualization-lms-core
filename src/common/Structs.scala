@@ -39,7 +39,9 @@ trait StructExp extends BaseExp with EffectExp {
     }
   }
   
-  case class SimpleStruct[T](tag: StructTag[T], elems: Map[String,Rep[Any]]) extends AbstractStruct[T]
+  case class SimpleStruct[T:Manifest](tag: StructTag[T], elems: Map[String,Rep[Any]]) extends AbstractStruct[T] {
+    val m = manifest[T]
+  }
   case class Field[T](struct: Rep[Any], index: String, tp: Manifest[T]) extends Def[T]
   
   def struct[T:Manifest](tag: StructTag[T], elems: (String, Rep[Any])*)(implicit pos: SourceContext): Rep[T] = struct(tag, Map(elems:_*))
@@ -62,7 +64,7 @@ trait StructExp extends BaseExp with EffectExp {
   }  
   
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
-    case SimpleStruct(tag, elems) => struct(tag, elems map { case (k,v) => (k, f(v)) })
+    case s@SimpleStruct(tag, elems) => struct(tag, elems map { case (k,v) => (k, f(v)) })(s.m, pos)
     case Field(struct, key, mf) => field(f(struct), key)(mf,pos)
     case _ => super.mirror(e,f)
   }
