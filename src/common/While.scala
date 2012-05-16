@@ -36,7 +36,6 @@ trait WhileExp extends While with EffectExp {
     case _ => super.symsFreq(e)
   }
 
-
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = (e match {
     case Reflect(While(cond, block), u, es) => {
     	if (f.hasContext) {

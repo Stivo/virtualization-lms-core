@@ -15,7 +15,7 @@ trait LiftScala extends LiftAll with LiftVariables with LiftEquals {
 trait ScalaOpsPkg extends Base
     with ImplicitOps with NumericOps with FractionalOps with OrderingOps with StringOps
     with RangeOps with IOOps with ArrayOps with BooleanOps with PrimitiveOps with MiscOps
-    with Equal with IfThenElse with Variables with While with TupleOps with ListOps
+    with Functions with Equal with IfThenElse with Variables with While with TupleOps with ListOps
     with SeqOps with MathOps with CastingOps with SetOps with ObjectOps with ArrayBufferOps
 
 trait ScalaOpsPkgExp extends ScalaOpsPkg

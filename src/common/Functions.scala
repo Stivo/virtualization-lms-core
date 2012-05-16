@@ -49,7 +49,7 @@ trait FunctionsExp extends Functions with EffectExp {
       reflectEffect(out, effects)
     } else out
   }
-
+  
   def doLambda2[A1:Manifest,A2:Manifest,B:Manifest](f: (Exp[A1],Exp[A2]) => Exp[B])(implicit pos: SourceContext) : Exp[(A1,A2) => B] = {
 
     val x1 = fresh[A1]
@@ -145,13 +145,13 @@ trait ScalaGenFunctions extends ScalaGenEffect with BaseGenFunctions {
   import IR._
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case e@Lambda(fun, x, y) =>
+    case e@Lambda(_, x, y) =>
       stream.println("val " + quote(sym) + " = {" + quote(x) + ": (" + remap(x.tp) + ") => ")
       emitBlock(y)
       stream.println(quote(getBlockResult(y)) + ": " + remap(y.tp))
       stream.println("}")
 
-    case e@Lambda2(fun, x1, x2, y) =>
+    case e@Lambda2(_, x1, x2, y) =>
       stream.println("val " + quote(sym) + " = { (" + quote(x1) + ": " + remap(x1.tp) + ", " + quote(x2) + ": " + remap(x2.tp) + ") => ")
       emitBlock(y)
       stream.println(quote(getBlockResult(y)) + ": " + remap(y.tp))

@@ -56,7 +56,10 @@ trait WorklistTransformer extends ForwardTransformer { // need backward version,
   def run[A:Manifest](s: Block[A]): Block[A] = {
     if (isDone) s else run(runOnce(s))
   }
-  override def traverseStm(stm: Stm): Unit = stm match {
+  override def traverseStm(stm: Stm): Unit = {
+     printdbg("Traversing stm "+stm)
+    stm match {
+   
     case TP(sym, rhs) => 
       curSubst.get(sym) match {
         case Some(replace) =>
@@ -67,6 +70,7 @@ trait WorklistTransformer extends ForwardTransformer { // need backward version,
         case None => 
           super.traverseStm(stm)
       }
+  }
   }
 
 }
