@@ -36,7 +36,6 @@ trait ArrayLoopsExp extends LoopsExp with IfThenElseExp {
 
   case class ArrayIndex[T](a: Rep[Array[T]], i: Rep[Int]) extends Def[T]  
   case class ArrayLength[T](a: Rep[Array[T]]) extends Def[Int]
-  case class Dummy(a: Rep[Int]) extends Def[Unit]
   
 /*
   example for flatMap fusion
