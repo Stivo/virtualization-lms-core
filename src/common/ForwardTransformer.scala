@@ -15,8 +15,7 @@ trait ForwardTransformer extends internal.AbstractSubstTransformer with internal
   override def hasContext = true
   override def reflectBlock[A](block: Block[A]): Exp[A] = {
     traverseBlock(block)
-    apply(block.res)
-//    apply(getBlockResult(block))
+    apply(getBlockResult(block))
   }
 
   override def traverseStm(stm: Stm): Unit = stm match {
@@ -57,7 +56,7 @@ trait WorklistTransformer extends ForwardTransformer { // need backward version,
     if (isDone) s else run(runOnce(s))
   }
   override def traverseStm(stm: Stm): Unit = {
-     printdbg("Traversing stm "+stm)
+     //printdbg("Traversing stm "+stm)
     stm match {
    
     case TP(sym, rhs) => 

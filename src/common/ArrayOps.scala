@@ -125,8 +125,10 @@ trait ArrayOpsExp extends ArrayOps with EffectExp with VariablesExp {
 	  case Reflect(ArrayUpdate(l,i,r), u, es) => reflectMirrored(Reflect(ArrayUpdate(f(l),f(i),f(r)), mapOver(f,u), f(es)))(mtype(manifest[A]))
 	  //case Reflect(ArrayForeach(a,x,b), u, es) => reflectMirrored(Reflect(ArrayForeach(f(a), f(x).asInstanceOf[Sym[_]], f(b)), mapOver(f,u), f(es)))(mtype(manifest[A]))
 	  case Reflect(ArrayForeach(a,x,b), u, es) =>
-	    if (f.hasContext)
-	      reflectMirrored(Reflect(ArrayForeach(f(a), f(x).asInstanceOf[Sym[_]], Block(f.reflectBlock(b))), mapOver(f,u), f(es)))(mtype(manifest[A]))
+	    if (f.hasContext) {
+	      val effects = reifyEffects(f.reflectBlock(b))
+	      reflectEffect(ArrayForeach(f(a), x, effects), summarizeEffects(effects).star)//(mtype(manifest[A]))
+	    }
 	    else
 	      reflectMirrored(Reflect(ArrayForeach(f(a), f(x).asInstanceOf[Sym[_]], f(b)), mapOver(f,u), f(es)))(mtype(manifest[A]))
 	  case _ => super.mirror(e,f)

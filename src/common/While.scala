@@ -39,10 +39,7 @@ trait WhileExp extends While with EffectExp {
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = (e match {
     case Reflect(While(cond, block), u, es) => {
     	if (f.hasContext) {
-    	  val newCond = f.reflectBlock(cond)
-    	  val newBody = f.reflectBlock(block)
-    	  reflectMirrored(Reflect(While(Block(newCond), Block(newBody)), mapOver(f,u), f(es)))
-//    	  __whileDo(newCond, newBody)
+    	  __whileDo(f.reflectBlock(cond), f.reflectBlock(block))
     	} else
     		reflectMirrored(Reflect(While(f(cond),f(block)), mapOver(f,u), f(es)))
     }

@@ -121,7 +121,9 @@ trait FunctionsExp extends Functions with EffectExp {
            Lambda(f(func),x,f(y))(l.mA, l.mB)
        case Reflect(l@Lambda(func,x,y), u, es) =>
          if (f.hasContext) {
-           reflectMirrored(Reflect(Lambda(f(func), x, Block(f.reflectBlock(y)))(l.mA, l.mB), mapOver(f,u), f(es)))
+           val newBlock = reifyEffectsHere(f.reflectBlock(y))
+           val summary = summarizeEffects(newBlock)
+           reflectEffectInternal(Lambda(f(func), x, newBlock), summary)
          } else {
            reflectMirrored(Reflect(Lambda(f(func), x, f(y))(l.mA, l.mB), mapOver(f,u), f(es)))
          }

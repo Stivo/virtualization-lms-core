@@ -69,8 +69,9 @@ trait IfThenElseExp extends IfThenElse with EffectExp {
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
     case Reflect(IfThenElse(c,a,b), u, es) => 
       if (f.hasContext)
-        reflectMirrored(Reflect(IfThenElse(f(c),Block(f.reflectBlock(a)),Block(f.reflectBlock(b))), mapOver(f,u), f(es)))
+        __ifThenElse(f(c), f.reflectBlock(a), f.reflectBlock(b))
       else
+//        __ifThenElse(f(c), f(a), f(b))
         reflectMirrored(Reflect(IfThenElse(f(c),f(a),f(b)), mapOver(f,u), f(es))) 
     case IfThenElse(c,a,b) => 
       if (f.hasContext)
