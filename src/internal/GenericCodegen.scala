@@ -69,7 +69,18 @@ trait GenericCodegen extends BlockTraversal {
       }
       else m.toString    
   }
-  def remapImpl[A](m: Manifest[A]): String = remap(m)
+
+  /**
+   * Strips of the Gen type and returns the string representation of the element type.
+   */
+  def stripGen[A](m: Manifest[A]): String = {
+    if (m.erasure == classOf[Gen[Any]])
+      remap(m.typeArguments.head)
+    else
+      remap(m)
+  }
+
+  def remapImpl[A](m: Manifest[A]) : String = remap(m)
   //def remapVar[A](m: Manifest[Variable[A]]) : String = remap(m.typeArguments.head)
 
   def hasMetaData: Boolean = false
@@ -97,7 +108,8 @@ trait GenericCodegen extends BlockTraversal {
   def emitBlock(y: Block[Any]): Unit = traverseBlock(y)
     
   def emitNode(sym: Sym[Any], rhs: Def[Any]): Unit = {
-    throw new GenerationFailedException("don't know how to generate code for: " + rhs)
+    stream.println("don't know how to generate code for: "+rhs)
+//    throw new GenerationFailedException("don't know how to generate code for: " + rhs)
   }
   
   def emitExternalLib(rhs: Def[Any]): Unit = {

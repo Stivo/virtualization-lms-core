@@ -36,8 +36,32 @@ trait FunctionsExp extends Functions with EffectExp {
     val mB = manifest[B]
   }
 
-  case class Apply[A:Manifest,B:Manifest](f: Exp[A => B], arg: Exp[A]) extends Def[B]
+  case class Apply[A:Manifest,B:Manifest](f: Exp[A => B], arg: Exp[A]) extends Def[B] {
+    val mA = manifest[A]
+    val mB = manifest[B]
+  }
 
+  override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Exp[A] = 
+    (e match {
+       case l@Lambda(func,x,y) =>
+         if (f.hasContext)
+           toAtom(Lambda(f(func),x,Block(f.reflectBlock(y)))(l.mA, l.mB))
+         else
+           Lambda(f(func),x,f(y))(l.mA, l.mB)
+           
+       case l@Lambda2(func, x1, x2, y) =>
+         if (f.hasContext)
+           toAtom(Lambda2(f(func), x1, x2, Block(f.reflectBlock(y)))(l.mA1, l.mA2, l.mB))
+         else
+           Lambda2(f(func),x1,x2,f(y))(l.mA1, l.mA2, l.mB)
+           
+       case a@Apply(func, arg) =>
+           toAtom(Apply(f(func), f(arg))(a.mA, a.mB))
+           
+       case _ => super.mirror(e, f)
+       
+    }).asInstanceOf[Exp[A]]
+  
   def doLambda[A:Manifest,B:Manifest](f: Exp[A] => Exp[B])(implicit pos: SourceContext) : Exp[A => B] = {
     val x = fresh[A]
     val y = reifyEffects(f(x)) // unfold completely at the definition site. 

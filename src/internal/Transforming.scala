@@ -44,7 +44,8 @@ trait Transforming extends Expressions with Blocks { self =>
   class SubstTransformer extends /*AbstractSubstTransformer*/ AbstractTransformer { val IR: self.type = self 
     val subst = new mutable.HashMap[Exp[Any], Exp[Any]]
     def apply[A](x: Exp[A]): Exp[A] = subst.get(x) match { 
-      case Some(y) if y != x => apply(y.asInstanceOf[Exp[A]]) case _ => x 
+      case Some(y) if y != x => apply(y.asInstanceOf[Exp[A]])
+      case _ => x
     }
   }
 
