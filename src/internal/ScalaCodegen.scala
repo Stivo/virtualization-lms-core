@@ -20,9 +20,11 @@ trait ScalaCodegen extends GenericCodegen with Config {
   }
 
   override def quote(x: Exp[Any]) : String = x match {
-    case Const(s: String) => "\""+s.replaceAll("\\\\", "\\\\\\\\").replaceAll("\"", "\\\"")+"\""
+    case Const(s: String) => """""""""+s+"""""""""
     case Const(l : Long) => l+"L"
     case Const(l : Char) => "'"+l+"'"
+    case Const(a: Array[_]) if x.tp.typeArguments(0) <:< manifest[String]
+		=> a.map(x => "\""+x+"\"").mkString("Array(",",",")")
     case _ => super.quote(x)
   }
   

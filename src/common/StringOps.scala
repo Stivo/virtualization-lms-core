@@ -51,6 +51,7 @@ trait StringOps extends Variables with OverloadHack {
   def infix_isEmpty(s1: Rep[String]) = string_isEmpty(s1)
   def infix_length(s1: Rep[String]) = string_length(s1)
   def infix_matches(s: Rep[String], regex: Rep[String]) = string_matches(s, regex)
+  def infix_replaceAll(s : Rep[String], regex : Rep[String], rep : Rep[String])(implicit ctx: SourceContext) = string_replaceall(s, regex, rep)
   
   object String {
     def valueOf(a: Rep[Any])(implicit pos: SourceContext) = string_valueof(a)
@@ -66,6 +67,7 @@ trait StringOps extends Variables with OverloadHack {
   def string_isEmpty(s1: Rep[String]) : Rep[Boolean]
   def string_length(s1: Rep[String]) : Rep[Int]
   def string_matches(s: Rep[String], regex: Rep[String]): Rep[Boolean]
+  def string_replaceall(s : Rep[String], regex : Rep[String], repl : Rep[String])(implicit ctx: SourceContext) : Rep[String]
 }
 
 trait StringOpsExp extends StringOps with VariablesExp {
@@ -79,6 +81,7 @@ trait StringOpsExp extends StringOps with VariablesExp {
   case class StringIsEmpty(s: Exp[String]) extends Def[Boolean]
   case class StringLength(s: Exp[String]) extends Def[Int]
   case class StringMatches(string: Exp[String], pattern: Exp[String]) extends Def[Boolean]
+  case class StringReplaceAll(s: Exp[String], regex : Exp[String], rep : Exp[String]) extends Def[String]
   
   def string_plus(s: Exp[Any], o: Exp[Any])(implicit pos: SourceContext): Rep[String] = StringPlus(s,o)
   def string_trim(s: Exp[String]) : Rep[String] = StringTrim(s)
@@ -90,6 +93,7 @@ trait StringOpsExp extends StringOps with VariablesExp {
   def string_isEmpty(s1: Exp[String]) = StringIsEmpty(s1)
   def string_length(s1: Exp[String]) = StringLength(s1)
   def string_matches(s: Rep[String], regex: Rep[String]) = StringMatches(s, regex)
+  def string_replaceall(s : Exp[String], regex : Exp[String], repl : Exp[String])(implicit ctx: SourceContext) = StringReplaceAll(s, regex, repl)
   
   override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext) : Def[A] = (e match {
     case StringPlus(a,b) => StringPlus(f(a),f(b))
@@ -102,6 +106,7 @@ trait StringOpsExp extends StringOps with VariablesExp {
     case StringIsEmpty(s) => StringIsEmpty(f(s))
     case StringLength(s) => StringLength(f(s))
     case StringMatches(s, pat) => StringMatches(f(s), f(pat))
+    case StringReplaceAll(s, regex, repl) => StringReplaceAll(f(s), f(regex), f(repl))
     case _ => super.mirrorDef(e,f)
   }).asInstanceOf[Def[A]]
   
@@ -122,6 +127,7 @@ trait ScalaGenStringOps extends ScalaGenBase {
     case StringIsEmpty(s) => emitValDef(sym, "%s.isEmpty()".format(quote(s)))
     case StringLength(s) => emitValDef(sym, "%s.length".format(quote(s)))
     case StringMatches(s, pattern) => emitValDef(sym, "%s.matches(%s)".format(quote(s), quote(pattern)))
+    case StringReplaceAll(s, regex, rep) => emitValDef(sym, "%s.replaceAll(%s, %s)".format(quote(s), quote(regex), quote(rep)))
     case _ => super.emitNode(sym, rhs)
   }
 }

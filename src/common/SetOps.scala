@@ -54,6 +54,15 @@ trait SetOpsExp extends SetOps with ArrayOps with EffectExp {
   def set_clear[A:Manifest](s: Exp[Set[A]])(implicit pos: SourceContext) = reflectWrite(s)(SetClear(s))
   def set_toseq[A:Manifest](s: Exp[Set[A]])(implicit pos: SourceContext) = SetToSeq(s)
   def set_toarray[A:Manifest](s: Exp[Set[A]])(implicit pos: SourceContext) = SetToArray(s)
+  
+  override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Def[A] = (e match {
+    case SetNew(a, ma) => SetNew(f(a), ma)
+    case SetAdd(s, a) => SetAdd(f(s), f(a))
+    case SetContains(s, e) => SetContains(f(s), f(e))
+    case _ => super.mirrorDef(e,f)
+  }).asInstanceOf[Def[A]]
+
+  
 }
 
 trait BaseGenSetOps extends GenericNestedCodegen {

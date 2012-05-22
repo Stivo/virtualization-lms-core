@@ -106,6 +106,7 @@ trait ArrayOpsExp extends ArrayOps with EffectExp with VariablesExp {
   override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Def[A] = (e match {
     case ArrayLength(a) => ArrayLength(f(a))
     case a@ArraySortBy(in, x, b) => ArraySortBy(f(in), x, f(b))(a.mA, a.mB)
+    case a@ArrayToSeq(x) => ArrayToSeq(f(x))//(a.mA, a.mB)
 //    case ArrayApply(a,x) => ArrayApply(f(a),f(x))
     case _ => super.mirrorDef(e,f)
   }).asInstanceOf[Def[A]]
