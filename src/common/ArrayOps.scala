@@ -212,9 +212,8 @@ trait ScalaGenArrayOps extends BaseGenArrayOps with ScalaGenBase {
     case n@ArraySortBy(a, x, blk) =>
       stream.println("val %s = %s.sortBy({ %s => ".format(quote(sym), quote(a), quote(x)))
       emitBlock(blk)
-      stream.println("%s}) // output type: %s".format(quote(getBlockResult(blk)), remap(sym.tp)))
+      stream.println("%s})".format(quote(getBlockResult(blk))))
     case n@ArrayMap(a,x,blk) => 
-      stream.println("// workaround for refinedManifest problem")
       stream.println("val " + quote(sym) + " = {")
       stream.println("val out = new Array[%s](%s.length)".format(remap(n.mB), quote(a)))
       stream.println("val in = " + quote(a))
@@ -227,12 +226,6 @@ trait ScalaGenArrayOps extends BaseGenArrayOps with ScalaGenBase {
       stream.println("}")
       stream.println("out")
       stream.println("}")
-    
-      // stream.println("val " + quote(sym) + " = " + quote(a) + ".map{")
-      // stream.println(quote(x) + " => ")
-      // emitBlock(blk)
-      // stream.println(quote(getBlockResult(blk)))
-      // stream.println("}")  
     case ArrayToSeq(a) => emitValDef(sym, quote(a) + ".toSeq")
     case _ => super.emitNode(sym, rhs)
   }
