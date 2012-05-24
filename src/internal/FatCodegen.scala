@@ -6,7 +6,7 @@ import java.io.{File, PrintWriter}
 
 trait GenericFatCodegen extends GenericNestedCodegen with FatBlockTraversal {
   val IR: Expressions with Effects with FatExpressions
-  import IR._  
+  import IR._
   
   
   override def traverseStm(stm: Stm) = stm match {
@@ -20,7 +20,7 @@ trait GenericFatCodegen extends GenericNestedCodegen with FatBlockTraversal {
   }
   
   def emitFatNode(sym: List[Sym[Any]], rhs: FatDef): Unit = rhs match {
-    case _ => sys.error("don't know how to generate code for: "+rhs)
+    case _ => stream.println("don't know how to generate code for: "+rhs)
   }
 
   // DELITE SPECIFIC METHOD -- used for kernel activation records

@@ -187,7 +187,7 @@ trait LoopFusionOpt extends internal.FatBlockTraversal with LoopFusionCore {
     // the caller of traverseBlock will quite likely call getBlockResult afterwards,
     // and if we change the result here, the caller will emit a reference to a sym
     // that doesn't exist (because it was replaced)
-
+    
     if (result0 != result) {
       printlog("super.focusExactScopeFat with result changed from " + result0 + " to " + result)
 
@@ -216,14 +216,14 @@ trait LoopFusionCore extends internal.FatScheduling with CodeMotion with Simplif
   val IR: LoopsFatExp with IfThenElseFatExp
   import IR._  
   
-/*
-  TODO: moved to GenericFatCodegen -- but they don't really belong there....
-  
   def unapplySimpleIndex(e: Def[Any]): Option[(Exp[Any], Exp[Int])] = None
   def unapplySimpleDomain(e: Def[Int]): Option[Exp[Any]] = None
   def unapplySimpleCollect(e: Def[Any]): Option[Exp[Any]] = None
-  def unapplySimpleCollectIf(e: Def[Any]): Option[(Exp[Any],List[Exp[Boolean]])] = None
-*/
+  def applyPlugIntoContext(d: Def[Any], r: Def[Any]): Def[Any] = 
+    throw new RuntimeException("Could not match " + d)
+  def plugInHelper[A,T:Manifest,U:Manifest](oldGen: Exp[Gen[A]], context: Exp[Gen[T]], plug: Exp[Gen[U]]): Exp[Gen[U]] = 
+    throw new RuntimeException("Could not plug in " + plug + " into " + context)
+  def shouldApplyFusion(currentScope: List[Stm])(result: List[Exp[Any]]): Boolean = true
 
   object SimpleIndex {
     def unapply(a: Def[Any]): Option[(Exp[Any], Exp[Int])] = unapplySimpleIndex(a)
@@ -235,10 +235,6 @@ trait LoopFusionCore extends internal.FatScheduling with CodeMotion with Simplif
 
   object SimpleCollect {
     def unapply(a: Def[Any]): Option[Exp[Any]] = unapplySimpleCollect(a)
-  }
-
-  object SimpleCollectIf {
-    def unapply(a: Def[Any]): Option[(Exp[Any],List[Exp[Boolean]])] = unapplySimpleCollectIf(a)
   }
 
 
@@ -293,7 +289,7 @@ trait LoopFusionCore extends internal.FatScheduling with CodeMotion with Simplif
         def WgetLoopVar(e: Stm): List[Sym[Int]] = e.rhs match { case SimpleFatLoop(s,x,rhs) => List(x) }
         def WgetLoopRes(e: Stm): List[Def[Any]] = e.rhs match { case SimpleFatLoop(s,x,rhs) => rhs }
 
-        val loopCollectSyms = Wloops flatMap (e => (e.lhs zip WgetLoopRes(e)) collect { case (s, SimpleCollectIf(_,_)) => s })
+        val loopCollectSyms = Wloops flatMap (e => (e.lhs zip WgetLoopRes(e)) collect { case (s, SimpleCollect(_)) => s })
 
         val loopSyms = Wloops flatMap (_.lhs)
         val loopVars = Wloops flatMap WgetLoopVar
@@ -353,12 +349,81 @@ trait LoopFusionCore extends internal.FatScheduling with CodeMotion with Simplif
         // shape dependency helpers
 
         def isShapeDep(s: Exp[Int], a: Stm) = s match { case Def(SimpleDomain(a1)) => a.lhs contains a1 case _ => false }
-        def getShapeCond(s: Exp[Int], a: Stm) = s match { case Def(SimpleDomain(a1)) => WgetLoopRes(a)(a.lhs indexOf a1) match { case SimpleCollectIf(a,c) => c } }
+        
+        /**
+         * Plugs Yield statements in body of loop e with the output of loop a. Also adds new definitions to the current scope.
+         *
+         *
+         * Here loop e is plugged into body of loop a. To be more precise:
+         * Shape of loop e dependsOn a
+         * s shapeOf e
+         * shape shapeOf a
+         * targetVar unified var for both loops
+         */
+        def duplicateYieldContextAndPlugInRhs(trans: SubstTransformer)(shB: Exp[Int], a: TTP)(b: TTP, shA: Exp[Int], targetVar: Sym[Int]) = {
+          // s depends on loop a (a.lhs(x).length) -- d is the result of loop a that the shape depends on
+          val d = shB match { case Def(SimpleDomain(a1)) => WgetLoopRes(a)(a.lhs indexOf a1) }
+          
+          printlog("beep bop "+d+"/"+b)
+          val newDefs = scala.collection.mutable.ArrayBuffer[Stm]()
+          var saveContext = 0
+          // TODO (VJ) this is not good as it creates one new loop for part of the rhs
+          // it is also not good because it does not track effects in the new loop. Or does it?
+          val z = b.rhs match {
+            case SimpleFatLoop(s,x,rhs) => rhs.map { r =>
+              saveContext = globalDefs.length
 
-        def extendLoopWithCondition(e: Stm, shape: Exp[Int], targetVar: Sym[Int], c: List[Exp[Boolean]]): List[Exp[Any]] = e.rhs match { 
-          case SimpleFatLoop(s,x,rhs) => (e.lhs zip rhs).map { case (l,r) => findOrCreateDefinitionExp(SimpleLoop(shape,targetVar,applyAddCondition(r,c)), l.pos) }
+              // concatenating loop vars of both generators (Yield) in the new Generator.
+              // This keeps the dependency between the new Yield and all added loops.
+              // effects ?
+              val newSym = SimpleLoop(shA, targetVar, applyPlugIntoContext(d, r))
+
+              // track only symbols of loops that are created in plugging. This prevents loops to be filtered afterwards.
+              UloopSyms = UloopSyms ++ globalDefs.drop(saveContext).collect{case a@ TP(lhs, SimpleLoop(_, _, _)) => List(lhs)}
+
+              // TODO (VJ) where to get source context
+              // extract new definitions
+              val z = findOrCreateDefinition(newSym, Nil).lhs.head
+              newDefs ++= globalDefs.drop(saveContext)
+              printlog("mod context. old: " + r + "; new: " + findDefinition(z))
+              z
+            }
+          }
+
+          printlog("newDefs:" + newDefs)
+//          innerScope = innerScope ++ newDefs
+          currentScope = currentScope ++ newDefs.map(fatten)
+          z
         }
+   
+        /*
+          val a = loop(len) { i => array { loop(u_i.length) { i2 => yield u_i(i2) } } }
+          val b = loop(a.length) { j => sum { yield 2 * a(j) } }
 
+          // bring loops together
+          val a,b = loop(len) { i =>
+            array { loop(u_i.length) { i2 => yield u_i(i2) } }
+            sum { yield 2 * a(j) }
+          }
+
+          // adapt shape by duplicating context (elim dep on size)
+          val a,b = loop(len) { i =>
+            array { loop(u_i.length) { i2 => yield u_i(i2) } }
+            sum { loop(u_i.length) { i2 => yield 2 * a(j) } }
+          }
+
+          // remove elem dep by using yield param directly
+          val a,b = loop(len) { i =>
+            array { loop(u_i.length) { i2 => yield u_i(i2) } }
+            sum { loop(u_i.length) { i2 => yield 2 * u_i(i2) } }
+          }
+
+          // dead code elimination
+          val b = loop(len) { i =>
+            sum { loop(u_i.length) { i2 => yield 2 * u_i(i2) } }
+          }
+        */
+        
         // partitioning: build maximal sets of loops to be fused
         // already fuse loops headers (shape, index variables)
 
@@ -382,11 +447,11 @@ trait LoopFusionCore extends internal.FatScheduling with CodeMotion with Simplif
 
               // analyze shape dependency and add appropriate conditions to loop body when fusing a filter loop
               val shape = if (isShapeDep(shapeA,b)) {
-                val loops2 = extendLoopWithCondition(a,shapeB,targetVar,getShapeCond(shapeA,b))
+                val loops2 = duplicateYieldContextAndPlugInRhs(t)(shapeA,b)(a,shapeB,targetVar)
                 (a.lhs zip loops2) foreach { p => t.subst(p._1) = p._2 }
                 shapeB
               } else if (isShapeDep(shapeB,a)) {
-                val loops2 = extendLoopWithCondition(b,shapeA,targetVar,getShapeCond(shapeB,a))
+                val loops2 = duplicateYieldContextAndPlugInRhs(t)(shapeB,a)(b,shapeA,targetVar)
                 (b.lhs zip loops2) foreach { p => t.subst(p._1) = p._2 }
                 shapeA
               } else {
@@ -426,7 +491,7 @@ trait LoopFusionCore extends internal.FatScheduling with CodeMotion with Simplif
 
                   printlog("replace " + e + " at " + index + " within " + fused)
 
-                  val rhs = WgetLoopRes(fused)(index) match { case SimpleCollectIf(y,c) => y }
+                  val rhs = WgetLoopRes(fused)(index) match { case SimpleCollect(y) => y }
 
                   t.subst(s) = rhs
                 case _ => //e

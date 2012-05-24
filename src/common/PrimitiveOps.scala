@@ -116,14 +116,14 @@ trait PrimitiveOpsExp extends PrimitiveOps with BaseExp {
    */
   case class ObjIntegerParseInt(s: Exp[String]) extends Def[Int]
   case class ObjIntMaxValue() extends Def[Int]
+  case class IntDoubleValue(lhs: Exp[Int]) extends Def[Double]
+  case class IntFloatValue(lhs: Exp[Int]) extends Def[Float]
   case class IntDivideFrac[A:Manifest:Fractional](lhs: Exp[Int], rhs: Exp[A]) extends Def[A]
   case class IntDivide(lhs: Exp[Int], rhs: Exp[Int]) extends Def[Int]
   case class IntMod(lhs: Exp[Int], rhs: Exp[Int]) extends Def[Int]
   case class IntBinaryOr(lhs: Exp[Int], rhs: Exp[Int]) extends Def[Int]
   case class IntBinaryAnd(lhs: Exp[Int], rhs: Exp[Int]) extends Def[Int]
   case class IntBinaryXor(lhs: Exp[Int], rhs: Exp[Int]) extends Def[Int]
-  case class IntDoubleValue(lhs: Exp[Int]) extends Def[Double]
-  case class IntFloatValue(lhs: Exp[Int]) extends Def[Float]
   case class IntBitwiseNot(lhs: Exp[Int]) extends Def[Int]
 
   def obj_integer_parse_int(s: Rep[String])(implicit pos: SourceContext) = ObjIntegerParseInt(s)
@@ -141,12 +141,19 @@ trait PrimitiveOpsExp extends PrimitiveOps with BaseExp {
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = ({
     implicit var a: Numeric[A] = null // hack!! need to store it in Def instances??
     e match {
+      case ObjIntegerParseInt(x) => obj_integer_parse_int(f(x))
+      case ObjIntMaxValue() => obj_int_max_value
       case IntDoubleValue(x) => int_double_value(f(x))
       case IntFloatValue(x) => int_float_value(f(x))
-      case IntBitwiseNot(x) => int_bitwise_not(f(x))
+        // TODO (VJ) could not invoke it without the manifest.
+//      case IntDivideFrac(lhs, rhs) => int_divide_frac[A](f(lhs), f(rhs))
       case IntDivide(x,y) => int_divide(f(x),f(y))
       case IntMod(x,y) => int_mod(f(x),f(y))
       case ObjDoublePositiveInfinity() => obj_double_positive_infinity
+      case IntBinaryOr(x,y) => int_binaryor(f(x),f(y))
+      case IntBinaryAnd(x,y) => int_binaryand(f(x),f(y))
+      case IntBinaryXor(x,y) => int_binaryxor(f(x),f(y))
+      case IntBitwiseNot(x) => int_bitwise_not(f(x))
       case _ => super.mirror(e,f)
     }
   }).asInstanceOf[Exp[A]]

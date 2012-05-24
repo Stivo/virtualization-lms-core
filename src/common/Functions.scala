@@ -36,7 +36,10 @@ trait FunctionsExp extends Functions with EffectExp {
     val mB = manifest[B]
   }
 
-  case class Apply[A:Manifest,B:Manifest](f: Exp[A => B], arg: Exp[A]) extends Def[B]
+  case class Apply[A:Manifest,B:Manifest](f: Exp[A => B], arg: Exp[A]) extends Def[B] {
+    val mA = manifest[A]
+    val mB = manifest[B]
+  }
 
   def doLambda[A:Manifest,B:Manifest](f: Exp[A] => Exp[B])(implicit pos: SourceContext) : Exp[A => B] = {
     val x = fresh[A]
@@ -132,6 +135,9 @@ trait FunctionsExp extends Functions with EffectExp {
            toAtom(Lambda2(f(func), x1, x2, Block(f.reflectBlock(y)))(l.mA1, l.mA2, l.mB))
          else
            Lambda2(f(func),x1,x2,f(y))(l.mA1, l.mA2, l.mB)
+       
+       case a@Apply(func, arg) =>
+         toAtom(Apply(f(func), f(arg))(a.mA, a.mB))
        case _ => super.mirror(e, f)
     }).asInstanceOf[Exp[A]]
 }
@@ -148,17 +154,18 @@ trait ScalaGenFunctions extends ScalaGenEffect with BaseGenFunctions {
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case e@Lambda(_, x, y) =>
-      stream.println("val " + quote(sym) + " = {" + quote(x) + ": (" + remap(x.tp) + ") => ")
+      stream.println("@inline")
+      stream.println("def " + quote(sym) + "(" + quote(x) + ": (" + remap(x.tp) + ")) = {")
       emitBlock(y)
       stream.println(quote(getBlockResult(y)) + ": " + remap(y.tp))
       stream.println("}")
 
     case e@Lambda2(_, x1, x2, y) =>
-      stream.println("val " + quote(sym) + " = { (" + quote(x1) + ": " + remap(x1.tp) + ", " + quote(x2) + ": " + remap(x2.tp) + ") => ")
+      stream.println("@inline")
+      stream.println("def " + quote(sym) + "(" + quote(x1) + ": " + remap(x1.tp) + ", " + quote(x2) + ": " + remap(x2.tp) + ") = { ")
       emitBlock(y)
       stream.println(quote(getBlockResult(y)) + ": " + remap(y.tp))
       stream.println("}")
-
     case Apply(fun, arg) =>
       emitValDef(sym, quote(fun) + "(" + quote(arg) + ")")
 
