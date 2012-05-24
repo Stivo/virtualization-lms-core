@@ -115,8 +115,15 @@ trait FunctionsExp extends Functions with EffectExp {
     case _ => super.symsFreq(e)
   }
   
+  override def mirrorDef[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Def[A] = (e match {
+       case a@Apply(func, arg) =>
+         Apply(f(func), f(arg))(a.mA, a.mB)
+       case _ => super.mirrorDef(e, f)
+  } ).asInstanceOf[Def[A]]
+  
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Exp[A] = 
     (e match {
+      
        case l@Lambda(func,x,y) =>
          if (f.hasContext)
            toAtom(Lambda(f(func),x,Block(f.reflectBlock(y)))(l.mA, l.mB))
@@ -135,9 +142,6 @@ trait FunctionsExp extends Functions with EffectExp {
            toAtom(Lambda2(f(func), x1, x2, Block(f.reflectBlock(y)))(l.mA1, l.mA2, l.mB))
          else
            Lambda2(f(func),x1,x2,f(y))(l.mA1, l.mA2, l.mB)
-       
-       case a@Apply(func, arg) =>
-         toAtom(Apply(f(func), f(arg))(a.mA, a.mB))
        case _ => super.mirror(e, f)
     }).asInstanceOf[Exp[A]]
 }
