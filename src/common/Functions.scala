@@ -126,16 +126,16 @@ trait FunctionsExp extends Functions with EffectExp {
       
        case l@Lambda(func,x,y) =>
          if (f.hasContext)
-           toAtom(Lambda(f(func),x,Block(f.reflectBlock(y)))(l.mA, l.mB))
+           toAtom(Lambda(f(func),f(x).asInstanceOf[Sym[Any]],Block(f.reflectBlock(y)))(l.mA, l.mB))
          else
-           Lambda(f(func),x,f(y))(l.mA, l.mB)
+           Lambda(f(func),f(x).asInstanceOf[Sym[Any]],f(y))(l.mA, l.mB)
        case Reflect(l@Lambda(func,x,y), u, es) =>
          if (f.hasContext) {
            val newBlock = reifyEffectsHere(f.reflectBlock(y))
            val summary = summarizeEffects(newBlock)
-           reflectEffectInternal(Lambda(f(func), x, newBlock), summary)
+           reflectEffectInternal(Lambda(f(func), f(x).asInstanceOf[Sym[Any]], newBlock), summary)
          } else {
-           reflectMirrored(Reflect(Lambda(f(func), x, f(y))(l.mA, l.mB), mapOver(f,u), f(es)))
+           reflectMirrored(Reflect(Lambda(f(func), f(x).asInstanceOf[Sym[Any]], f(y))(l.mA, l.mB), mapOver(f,u), f(es)))
          }
        case l@Lambda2(func, x1, x2, y) =>
          if (f.hasContext)
