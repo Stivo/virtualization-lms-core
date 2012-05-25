@@ -128,7 +128,7 @@ trait FunctionsExp extends Functions with EffectExp {
          if (f.hasContext)
            toAtom(Lambda(f(func),f(x).asInstanceOf[Sym[Any]],Block(f.reflectBlock(y)))(l.mA, l.mB))
          else
-           Lambda(f(func),f(x).asInstanceOf[Sym[Any]],f(y))(l.mA, l.mB)
+           toAtom(Lambda(f(func),f(x).asInstanceOf[Sym[Any]],f(y))(l.mA, l.mB))
        case Reflect(l@Lambda(func,x,y), u, es) =>
          if (f.hasContext) {
            val newBlock = reifyEffectsHere(f.reflectBlock(y))
