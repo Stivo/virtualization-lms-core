@@ -25,7 +25,7 @@ trait BooleanOpsExp extends BooleanOps with BaseExp with IfThenElseExp {
 
   def boolean_negate(lhs: Exp[Boolean])(implicit pos: SourceContext) : Exp[Boolean] = BooleanNegate(lhs)
   def boolean_and(lhs: Exp[Boolean], rhs: Exp[Boolean])(implicit pos: SourceContext) : Exp[Boolean] = __ifThenElse(lhs, rhs, unit(false))
-  def boolean_or(lhs: Exp[Boolean], rhs: Exp[Boolean])(implicit pos: SourceContext) : Exp[Boolean] = __ifThenElse(lhs, rhs, unit(true))
+  def boolean_or(lhs: Exp[Boolean], rhs: Exp[Boolean])(implicit pos: SourceContext) : Exp[Boolean] = __ifThenElse(lhs, unit(true), rhs)
 
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = (e match {
     case BooleanNegate(x) => boolean_negate(f(x))
