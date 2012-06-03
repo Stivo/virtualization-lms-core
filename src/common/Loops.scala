@@ -47,7 +47,9 @@ trait LoopsExp extends Loops with BaseExp with EffectExp {
    *  @param  g   Represents list of loop vars in which this yield is nested.
    *  @param  a   Expression for the value that is being yielded.
    */
-  case class YieldSingle[T](g: List[Exp[Int]], a: Exp[T]) extends Def[Gen[T]]
+  case class YieldSingle[A: Manifest](g: List[Exp[Int]], a: Exp[A]) extends Def[Gen[A]] {
+    val mA = manifest[A]
+  }
 
   /**
    * $yieldstmt
@@ -58,7 +60,10 @@ trait LoopsExp extends Loops with BaseExp with EffectExp {
    *  @param  g   Represents list of loop vars in which this yield is nested.
    *  @param  a   Expression for the value that is being yielded.
    */
-  case class YieldTuple[A, B](g: List[Exp[Int]], a: (Exp[A], Exp[B])) extends Def[Gen[(A, B)]]
+  case class YieldTuple[A: Manifest, B: Manifest](g: List[Exp[Int]], a: (Exp[A], Exp[B])) extends Def[Gen[(A, B)]] {
+	val mA = manifest[A]
+    val mB = manifest[B]
+  }
   
   /**
    * Skip statement is used in loops to indicate that no element is being emitted. For example in filter clauses, else branch will contain a Skip.
@@ -123,14 +128,16 @@ trait LoopsExp extends Loops with BaseExp with EffectExp {
   // mirroring
 
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit ctx: SourceContext): Exp[A] = (e match {
-    case Reflect(SimpleLoop(s,v,body), u, es) => 
+    case Reflect(SimpleLoop(s,v,body), u, es) =>
+      println("Generic simple loop mirror")
       reflectMirrored(Reflect(SimpleLoop(f(s),f(v).asInstanceOf[Sym[Int]],mirrorFatDef(body,f)), mapOver(f,u), f(es)))(mtype(manifest[A]))
     case SimpleLoop(s,v,body) =>
       simpleLoop(f(s),f(v).asInstanceOf[Sym[Int]],mirrorFatDef(body,f))(mtype(manifest[A]))
-    case Reflect(YieldSingle(i, y), u, es) => 
-      reflectMirrored(Reflect(YieldSingle(f(i), f(y)), mapOver(f,u), f(es)))(mtype(manifest[A]))
-    case Reflect(YieldTuple(i, y), u, es) => 
-      reflectMirrored(Reflect(YieldTuple(f(i),(f(y._1), f(y._2))), mapOver(f,u), f(es)))(mtype(manifest[A]))
+    case Reflect(ys @ YieldSingle(i, y), u, es) =>
+      println("Mirror YieldSingle")
+      reflectMirrored(Reflect(YieldSingle(f(i), f(y))(ys.mA), mapOver(f,u), f(es)))(mtype(manifest[A]))
+    case Reflect(yt @ YieldTuple(i, y), u, es) => 
+      reflectMirrored(Reflect(YieldTuple(f(i),(f(y._1), f(y._2)))(yt.mA, yt.mB), mapOver(f,u), f(es)))(mtype(manifest[A]))
     case Reflect(Skip(i), u, es) => 
       reflectMirrored(Reflect(Skip(f(i)), mapOver(f,u), f(es)))(mtype(manifest[A]))
     case Skip(i) => toAtom(Skip(f(i)))(mtype(manifest[A]), ctx)
