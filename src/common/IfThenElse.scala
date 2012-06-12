@@ -36,14 +36,6 @@ trait IfThenElseExp extends IfThenElse with EffectExp {
   }
   
   case class IfThenElse[T:Manifest](cond: Exp[Boolean], thenp: Block[T], elsep: Block[T]) extends AbstractIfThenElse[T]
-
-  
-  def __ifThenElse2[T:Manifest](cond: Rep[Boolean], thenp: => Rep[T], elsep: => Rep[T])(implicit pos: SourceContext) = {
-    val a = reifyEffectsHere(thenp)
-    val b = reifyEffectsHere(elsep)
-
-    ifThenElse(cond,a,b)
-  }
   
   override def __ifThenElse[T:Manifest](cond: Rep[Boolean], thenp: => Rep[T], elsep: => Rep[T])(implicit pos: SourceContext) = {
     val a = reifyEffectsHere(thenp)
@@ -71,12 +63,11 @@ trait IfThenElseExp extends IfThenElse with EffectExp {
       if (f.hasContext)
         __ifThenElse(f(c), f.reflectBlock(a), f.reflectBlock(b))
       else
-//        __ifThenElse(f(c), f(a), f(b))
         reflectMirrored(Reflect(IfThenElse(f(c),f(a),f(b)), mapOver(f,u), f(es))) 
     case IfThenElse(c,a,b) => 
-      if (f.hasContext)
+      if (f.hasContext) {
         __ifThenElse(f(c),f.reflectBlock(a),f.reflectBlock(b))
-      else
+      } else
         IfThenElse(f(c),f(a),f(b)) // FIXME: should apply pattern rewrites (ie call smart constructor)
     case _ => super.mirror(e,f)
   }
