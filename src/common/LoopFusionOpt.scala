@@ -224,6 +224,7 @@ trait LoopFusionCore extends internal.FatScheduling with CodeMotion with Simplif
   def plugInHelper[A,T:Manifest,U:Manifest](oldGen: Exp[Gen[A]], context: Exp[Gen[T]], plug: Exp[Gen[U]]): Exp[Gen[U]] = 
     throw new RuntimeException("Could not plug in " + plug + " into " + context)
   def shouldApplyFusion(currentScope: List[Stm])(result: List[Exp[Any]]): Boolean = true
+  def shapeEquality(s1: Exp[Int], s2: Exp[Int]) = s1 == s2
 
   object SimpleIndex {
     def unapply(a: Def[Any]): Option[(Exp[Any], Exp[Int])] = unapplySimpleIndex(a)
@@ -338,7 +339,7 @@ trait LoopFusionCore extends internal.FatScheduling with CodeMotion with Simplif
           !WtableNeg.exists(p => (a.lhs contains p._1) && (b.lhs contains p._2) || (b.lhs contains p._1) && (a.lhs contains p._2))
 
         def canFuseDirect(a: Stm, b: Stm): Boolean = (a.rhs,b.rhs) match {
-          case (SimpleFatLoop(s1,_,_), SimpleFatLoop(s2,_,_)) if s1 == s2 => true  // same size (horizontal or pipeline)
+          case (SimpleFatLoop(s1,_,_), SimpleFatLoop(s2,_,_)) if shapeEquality(s1, s2) => true  // same size (horizontal or pipeline)
           case (SimpleFatLoop(Def(SimpleDomain(a1)),_,_), SimpleFatLoop(_,_,_)) if b.lhs contains a1 => true // pipeline
           case (SimpleFatLoop(_,_,_), SimpleFatLoop(Def(SimpleDomain(b1)),_,_)) if a.lhs contains b1 => true
           case _ => false
@@ -455,7 +456,7 @@ trait LoopFusionCore extends internal.FatScheduling with CodeMotion with Simplif
                 (b.lhs zip loops2) foreach { p => t.subst(p._1) = p._2 }
                 shapeA
               } else {
-                assert(shapeA == shapeB, "loop shapes must match")
+                assert(shapeEquality(shapeA, shapeB), "loop shapes must match")
                 shapeA
               }
 
