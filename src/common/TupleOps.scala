@@ -144,6 +144,7 @@ trait TupleOpsExp extends TupleOps with EffectExp {
   }
 
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = (e match {
+/*
     case e@ETuple2(a,b)     => make_tuple2(f(a),f(b))(e.m1,e.m2,pos)
     case e@Tuple2Access1(t) => tuple2_get1(f(t))(e.m,pos)
     case e@Tuple2Access2(t) => tuple2_get2(f(t))(e.m,pos)
@@ -179,7 +180,7 @@ trait TupleOpsExp extends TupleOps with EffectExp {
     case Reflect(e@Tuple5Access3(t), u, es) => reflectMirrored(Reflect(Tuple5Access3(f(t))(e.m), mapOver(f,u), f(es)))(mtype(manifest[A]))    
     case Reflect(e@Tuple5Access4(t), u, es) => reflectMirrored(Reflect(Tuple5Access4(f(t))(e.m), mapOver(f,u), f(es)))(mtype(manifest[A]))    
     case Reflect(e@Tuple5Access5(t), u, es) => reflectMirrored(Reflect(Tuple5Access5(f(t))(e.m), mapOver(f,u), f(es)))(mtype(manifest[A]))    
-    
+*/
     case _ => super.mirror(e,f)
   }).asInstanceOf[Exp[A]]
 
