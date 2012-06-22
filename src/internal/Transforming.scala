@@ -1,19 +1,23 @@
 package scala.virtualization.lms
 package internal
 
+import util.OverloadHack
 import scala.collection.{immutable,mutable}
 import scala.reflect.SourceContext
 
 trait AbstractTransformer {
-  val IR: Expressions with Blocks
+  val IR: Expressions with Blocks with OverloadHack 
   import IR._
   
   def hasContext = false
   def reflectBlock[A](xs: Block[A]): Exp[A] = sys.error("reflectBlock not supported by context-free transformers")
   
   def apply[A](x: Exp[A]): Exp[A]
-  def apply[A](xs: Block[A]): Block[A] = Block(apply(xs.res))
-
+  def apply[A:Manifest](xs: Block[A]): Block[A] = {
+    // should be overridden by transformers with context
+    assert(!hasContext) 
+    Block(apply(xs.res)) 
+  } 
   def apply[A](xs: List[Exp[A]]): List[Exp[A]] = xs map (e => apply(e))
   def apply[A](xs: Seq[Exp[A]]): Seq[Exp[A]] = xs map (e => apply(e))
   def apply[X,A](f: X=>Exp[A]): X=>Exp[A] = (z:X) => apply(f(z))
@@ -33,7 +37,8 @@ trait AbstractSubstTransformer extends AbstractTransformer {
 }
 
 
-trait Transforming extends Expressions with Blocks { self =>
+trait Transforming extends Expressions with Blocks with OverloadHack {
+  self => 
   
   /*abstract class Transformer extends AbstractTransformer { // a polymorphic function, basically...
     val IR: self.type = self    
@@ -66,7 +71,6 @@ trait Transforming extends Expressions with Blocks { self =>
 
 
 trait FatTransforming extends Transforming with FatExpressions {
-  this: scala.virtualization.lms.common.BaseExp => // probably shouldn't be here...
   
   //def mirror[A:Manifest](e: FatDef, f: Transformer): Exp[A] = sys.error("don't know how to mirror " + e)  
   
